@@ -89,7 +89,7 @@ AI agents run arbitrary code. One rogue `rm -rf /` and your host is toast. Sanit
 
 ## Choose Your Sandbox
 
-Every image is described by a tag: **`{agent}-{desktop}-{connector}`**. Pick one that matches your use case:
+Every image is described by a tag: **`{base-image-}agent-desktop-connector`**. Pick one that matches your use case. The base image is optional and defaults to Ubuntu; other bases are prefixed (e.g. `debian-ag-xfce-kasm`):
 
 | I want to...                     | Tag              | Connect via                |
 | :------------------------------- | :--------------- | :------------------------- |
@@ -103,12 +103,13 @@ Every image is described by a tag: **`{agent}-{desktop}-{connector}`**. Pick one
 | Use OpenAI Codex with a desktop  | `cx-xfce-kasm`   | `https://localhost:8444`   |
 | Use OpenCode in a terminal       | `oc-none-ssh`    | `ssh -p 2222 ...`         |
 | Use OpenCode with a desktop      | `oc-xfce-kasm`   | `https://localhost:8444`   |
+| Use OpenCode Desktop in browser  | `od-xfce-kasm`   | `https://localhost:8444`   |
 
 > **First time?** Start with **`ag-xfce-kasm`** — it gives you the full desktop experience via your browser.
 
 > **Heads-up:** `gc` (Gemini CLI) lost its free tier on 2026-06-18 and now requires a paid Gemini API key / Code Assist license. New users should prefer **`agy`** (Antigravity CLI), Google's official successor — already shipped here.
 
-There are **23 valid combinations** in total. See [Modular Tag System](docs/tags.md) for the full matrix, dimension model, and constraint rules.
+There are **94 valid combinations** in total (default Ubuntu base, plus a `debian-`-prefixed variant of every tag). See [Modular Tag System](docs/tags.md) for the full matrix, dimension model, and constraint rules.
 
 Missing your favorite agent? Adding one takes a manifest plus a Dockerfile - see [Bring Your Own Agent](docs/bring-your-own-agent.md).
 
@@ -234,13 +235,12 @@ ssh -p 2222 $USER@localhost
 sanity-gravity/
 ├── sanity-cli                  # CLI entry point (Python 3, no external deps)
 ├── sandbox/
-│   ├── Dockerfile.base         # Base layer: Ubuntu 24.04 + SSH + supervisord
-│   ├── layers/
-│   │   ├── desktops/           # xfce, none
-│   │   ├── agents/             # ag (Antigravity), agy (Antigravity CLI), gc (Gemini CLI), cc (Claude Code), cx (OpenAI Codex), oc (OpenCode)
-│   │   └── connectors/         # kasm (KasmVNC), vnc (TigerVNC), ssh
 │   └── rootfs/                 # Shared overlay (entrypoint, gravity-cli, supervisor configs)
-├── lib/                        # Proxy manager module
+├── plugins/                    # Manifest-driven plugins (PR #6)
+│   ├── base-images/            #   ubuntu (default), debian
+│   ├── desktops/               #   xfce, none, cinnamon
+│   ├── agents/                 #   ag, agy, gc, cc, cx, oc, od
+│   └── connectors/             #   kasm (KasmVNC), vnc (TigerVNC), ssh
 ├── config/                     # Runtime-generated docker-compose files (git-ignored)
 ├── tests/                      # Pytest integration suite
 ├── workspace/                  # Default bind-mounted workspace

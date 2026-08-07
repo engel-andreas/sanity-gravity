@@ -42,6 +42,20 @@ from sanity_gravity.verbs.build import (  # noqa: E402
 )
 
 
+def _running_filter(container_name: str):
+    """run_command mock: report only ``container_name`` as running.
+
+    Realistic stand-in for the verbs' scan over VALID_TAGS — the mock
+    returns "true" only for the targeted container so the scan is not
+    sensitive to the (alphabetical) ordering of valid tags.
+    """
+
+    def _fake_run(cmd, **_kw):
+        return "true" if container_name in " ".join(cmd) else "false"
+
+    return _fake_run
+
+
 class TestDimensionConstraints:
     """Tests for dimension-based tag constraint filtering."""
 
@@ -67,22 +81,23 @@ class TestDimensionConstraints:
     def test_headless_cli_agents_valid(self):
         """gc and cc can run headless with SSH."""
         for agent in ["gc", "cc"]:
-            a, d, c = parse_tag(f"{agent}-none-ssh")
+            base, a, d, c = parse_tag(f"{agent}-none-ssh")
+            assert base == "ubuntu"
             assert a == agent
             assert d == "none"
             assert c == "ssh"
 
     def test_all_ag_tags_have_xfce(self):
-        """Every ag tag must use xfce desktop."""
+        """Every default-base ag tag must use a GUI desktop (xfce/cinnamon)."""
         ag_tags = [t for t in VALID_TAGS if t.startswith("ag-")]
-        assert len(ag_tags) == 3
+        assert len(ag_tags) == 6
         for tag in ag_tags:
-            assert "-xfce-" in tag
+            assert "-xfce-" in tag or "-cinnamon-" in tag
 
     def test_no_headless_gui_connector_in_valid_tags(self):
         """No *-none-kasm/vnc should appear in VALID_TAGS."""
         for tag in VALID_TAGS:
-            _, desktop, connector = tag.split("-")
+            _, _, desktop, connector = parse_tag(tag)
             if desktop == "none":
                 assert connector == "ssh", f"Invalid combo in VALID_TAGS: {tag}"
 
@@ -106,6 +121,10 @@ class TestDimensionConstraints:
         with pytest.raises(ValueError, match="Invalid tag format"):
             parse_tag("ag-xfce")
         with pytest.raises(ValueError, match="Invalid tag format"):
+            parse_tag("a-b-c-d-e")
+        # Four parts is the new base dimension — but an unregistered
+        # base slug still fails validation.
+        with pytest.raises(ValueError, match="Unknown base image"):
             parse_tag("ag-xfce-kasm-extra")
 
 
@@ -406,7 +425,7 @@ class TestNewCommands:
     @patch("sanity_gravity.verbs.shell.run_command")
     @patch("subprocess.check_call")
     def test_shell_command(self, mock_check_call, mock_run, mock_env):
-        mock_run.return_value = "true"
+        mock_run.side_effect = _running_filter("ag-xfce-kasm-1")
 
         args = argparse.Namespace(name="sanity-gravity", user=None)
 
@@ -424,7 +443,7 @@ class TestNewCommands:
     @patch("sanity_gravity.verbs.shell.run_command")
     @patch("subprocess.check_call")
     def test_shell_command_with_user(self, mock_check_call, mock_run, mock_env):
-        mock_run.return_value = "true"
+        mock_run.side_effect = _running_filter("ag-xfce-kasm-1")
 
         args = argparse.Namespace(name="sanity-gravity", user="root")
 
@@ -442,7 +461,7 @@ class TestNewCommands:
     @patch("sanity_gravity.verbs.shell.run_command")
     @patch("subprocess.check_call")
     def test_shell_command_with_use_bash(self, mock_check_call, mock_run, mock_env):
-        mock_run.return_value = "true"
+        mock_run.side_effect = _running_filter("ag-xfce-kasm-1")
 
         args = argparse.Namespace(name="sanity-gravity", user=None, use="bash")
 
@@ -463,7 +482,7 @@ class TestNewCommands:
     def test_shell_command_zsh_fallback_to_bash(
         self, mock_call, mock_check_call, mock_run, mock_env
     ):
-        mock_run.return_value = "true"
+        mock_run.side_effect = _running_filter("ag-xfce-kasm-1")
         mock_check_call.side_effect = subprocess.CalledProcessError(1, "zsh")
 
         args = argparse.Namespace(name="sanity-gravity", user=None)
@@ -490,7 +509,7 @@ class TestNewCommands:
     def test_shell_command_no_fallback_when_use_specified(
         self, mock_call, mock_check_call, mock_run, mock_env
     ):
-        mock_run.return_value = "true"
+        mock_run.side_effect = _running_filter("ag-xfce-kasm-1")
         mock_check_call.side_effect = subprocess.CalledProcessError(1, "zsh")
 
         args = argparse.Namespace(name="sanity-gravity", user=None, use="zsh")

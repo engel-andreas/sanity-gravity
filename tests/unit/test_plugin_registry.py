@@ -35,8 +35,8 @@ def test_from_dir_loads_plugins(reg):
 
 
 def test_registered_slugs(reg):
-    assert {"ag", "gc", "cc"}.issubset(set(reg.agents))
-    assert set(reg.desktops) == {"xfce", "none"}
+    assert {"ag", "gc", "cc", "od"}.issubset(set(reg.agents))
+    assert set(reg.desktops) == {"xfce", "none", "cinnamon"}
     assert set(reg.connectors) == {"kasm", "vnc", "ssh"}
 
 

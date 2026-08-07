@@ -31,12 +31,12 @@ mkdir -p $HOME/.vnc
 echo "$VNC_PW" | vncpasswd -f > $HOME/.vnc/passwd
 chmod 600 $HOME/.vnc/passwd
 
-# Setup xstartup for XFCE4
+# Setup xstartup for Desktop Session
 cat > $HOME/.vnc/xstartup <<EOF
 #!/bin/sh
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
-exec startxfce4
+exec /usr/local/bin/desktop-session
 EOF
 chmod +x $HOME/.vnc/xstartup
 

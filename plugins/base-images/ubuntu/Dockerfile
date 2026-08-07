@@ -1,5 +1,11 @@
 # Pinned: ubuntu:24.04 as of 2026-03-30
-FROM ubuntu:24.04@sha256:186072bba1b2f436cbb91ef2567abca677337cfc786c86e107d25b7072feef0c
+# The default is unused unless building directly; the CLI always passes
+# --build-arg BASE_IMAGE=<parent>. Kept as a default so bare builds
+# (tests, ad-hoc `docker build -f plugins/base-images/ubuntu/Dockerfile sandbox`) work.
+# Build context is sandbox/ because `COPY rootfs /` pulls from the shared
+# sandbox/rootfs tree (see hooks/build._build_context_for).
+ARG BASE_IMAGE=ubuntu:24.04@sha256:186072bba1b2f436cbb91ef2567abca677337cfc786c86e107d25b7072feef0c
+FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL=C.UTF-8

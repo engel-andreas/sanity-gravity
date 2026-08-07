@@ -4,36 +4,54 @@
 
 Every Sanity-Gravity image is assembled through a **4-layer FROM chain**. Each layer is a standalone Dockerfile that accepts a `BASE_IMAGE` build argument, enabling composable stacking.
 
+The first layer is the **base OS image**, selected by the tag's base dimension. `ubuntu` is the default (its intermediate keeps the legacy unprefixed names); other bases are prefixed:
+
 ```
-ubuntu:24.04 (pinned SHA)
- └─ Dockerfile.base                      → sanity-gravity:_base
-     ├─ plugins/desktops/xfce/           → sanity-gravity:_base-xfce
-     │   ├─ plugins/agents/ag/           → sanity-gravity:_ag-xfce → ag-xfce-{kasm,vnc,ssh}
-     │   ├─ plugins/agents/agy/          → sanity-gravity:_agy-xfce → agy-xfce-{kasm,vnc,ssh}
-     │   ├─ plugins/agents/cc/           → sanity-gravity:_cc-xfce → cc-xfce-{kasm,vnc,ssh}
-     │   ├─ plugins/agents/cx/           → sanity-gravity:_cx-xfce → cx-xfce-{kasm,vnc,ssh}
-     │   ├─ plugins/agents/gc/           → sanity-gravity:_gc-xfce → gc-xfce-{kasm,vnc,ssh}
-     │   └─ plugins/agents/oc/           → sanity-gravity:_oc-xfce → oc-xfce-{kasm,vnc,ssh}
-     └─ plugins/desktops/none/           → sanity-gravity:_base-none
-         ├─ plugins/agents/agy/          → sanity-gravity:_agy-none → agy-none-ssh
-         ├─ plugins/agents/cc/           → sanity-gravity:_cc-none → cc-none-ssh
-         ├─ plugins/agents/cx/           → sanity-gravity:_cx-none → cx-none-ssh
-         ├─ plugins/agents/gc/           → sanity-gravity:_gc-none → gc-none-ssh
-         └─ plugins/agents/oc/           → sanity-gravity:_oc-none → oc-none-ssh
+ubuntu:24.04 (pinned SHA) / debian:12 (pinned SHA)   ← base dimension (ubuntu default)
+ └─ base plugin Dockerfile                            → sanity-gravity:_base         (ubuntu)
+                                                      → sanity-gravity:_debian_base  (debian)
+     ├─ plugins/desktops/xfce/                        → _base-xfce / _debian_base-xfce
+     │   ├─ plugins/agents/ag/                        → _ag-xfce / _debian_ag-xfce → ag-xfce-{kasm,vnc,ssh} / debian-ag-xfce-{kasm,vnc,ssh}
+     │   ├─ plugins/agents/agy/                       → _agy-xfce / _debian_agy-xfce
+     │   ├─ plugins/agents/cc/                        → _cc-xfce / _debian_cc-xfce
+     │   ├─ plugins/agents/cx/                        → _cx-xfce / _debian_cx-xfce
+     │   ├─ plugins/agents/gc/                        → _gc-xfce / _debian_gc-xfce
+     │   ├─ plugins/agents/oc/                        → _oc-xfce / _debian_oc-xfce
+     │   └─ plugins/agents/od/                        → _od-xfce / _debian_od-xfce
+     ├─ plugins/desktops/cinnamon/                    → _base-cinnamon / _debian_base-cinnamon
+     │   └─ plugins/agents/*/                         → _*-cinnamon / _debian_*-cinnamon
+     └─ plugins/desktops/none/                        → _base-none / _debian_base-none
+         ├─ plugins/agents/agy/                       → _agy-none / _debian_agy-none → agy-none-ssh / debian-agy-none-ssh
+         ├─ plugins/agents/cc/                        → _cc-none / _debian_cc-none
+         ├─ plugins/agents/cx/                        → _cx-none / _debian_cx-none
+         ├─ plugins/agents/gc/                        → _gc-none / _debian_gc-none
+         └─ plugins/agents/oc/                        → _oc-none / _debian_oc-none
 ```
 
-(`ag` requires a GUI desktop, so it has no headless `none` variant.)
+(`ag` and `od` require a GUI desktop, so they have no headless `none` variant.)
 
-Each non-base layer lives under `plugins/<kind>/<slug>/` alongside a
-`manifest.toml` declaring its capabilities, ports, compose overlay, and
-(for connectors) announce template. The kernel reads manifests at startup
-via `lib/plugins.PluginRegistry`; adding a new agent/desktop/connector is
+The base image is itself a manifest-driven plugin: `plugins/base-images/ubuntu/`
+owns the canonical base `Dockerfile` (the default OS layer; it builds with
+`sandbox/` as its context so `COPY rootfs /` resolves — see
+`hooks/build._build_context_for`); `plugins/base-images/debian/` ships its own
+`Dockerfile` built on pinned `debian:12`. Each non-base layer lives under
+`plugins/<kind>/<slug>/` alongside a `manifest.toml` declaring its
+capabilities, ports, compose overlay, and (for connectors) announce
+template. The kernel reads manifests at startup via
+`lib/plugins.PluginRegistry`; adding a new agent/desktop/connector/base is
 **a directory + two files** — no Python edits required (see PR #6).
 
 ## Naming Convention
 
-- **Intermediate images** are prefixed with `_` (e.g. `sanity-gravity:_base-xfce`). They are local-only and never pushed to a registry.
-- **Final images** use the full tag (e.g. `sanity-gravity:ag-xfce-kasm`). These are what you run and what CI publishes.
+- **Intermediate images** are prefixed with `_`. The default base keeps
+  its legacy names (`_base`, `_base-{desktop}`, `_{agent}-{desktop}`);
+  other bases are prefixed with their slug
+  (`_debian_base`, `_debian_base-{desktop}`, `_debian_{agent}-{desktop}`).
+  Intermediates are local-only and never pushed to a registry.
+- **Final images** use the full tag. Tags on the default base omit the
+  base prefix (e.g. `sanity-gravity:ag-xfce-kasm`); non-default bases are
+  prefixed (e.g. `sanity-gravity:debian-ag-xfce-kasm`). These are what you
+  run and what CI publishes.
 
 ## How FROM Chaining Works
 
@@ -68,14 +86,23 @@ visibility to its own files.
 
 ## Build Phases
 
-`./sanity-cli build` (with no arguments) builds all 19 **official** images in two phases; non-official tags (e.g. the deprecated `gc-*`) build only when named explicitly:
+`./sanity-cli build` (with no arguments) builds all **80 official** images
+in two phases; non-official tags (e.g. the deprecated `gc-*`) build only
+when named explicitly:
 
-1. **Phase 1: Intermediates** - builds the 12 shared intermediate images (`_base`, `_base-xfce`, `_base-none`, `_ag-xfce`, `_agy-xfce`, `_agy-none`, `_cc-xfce`, `_cc-none`, `_cx-xfce`, `_cx-none`, `_oc-xfce`, `_oc-none`).
-2. **Phase 2: Finals** - builds all 19 official final images on top of the intermediates.
+1. **Phase 1: Intermediates** - builds the shared intermediate images
+   (`_base`, `_debian_base`, `_base-*`, `_debian_base-*`, `_{agent}-{desktop}`,
+   `_debian_{agent}-{desktop}` — one per base).
+2. **Phase 2: Finals** - builds all 80 official final images (40 per base)
+   on top of the intermediates.
+
+`--layer base|desktop|agent|connector` builds up to a layer type (CI use);
+`--layer-target` narrows it to a specific slug (e.g. `debian`,
+`xfce`, `debian-ag-xfce`).
 
 ## Entrypoint
 
-The base image (`Dockerfile.base`) installs `supervisord` as the process manager and `entrypoint.sh` as PID 1. At container start, the entrypoint:
+The base image (`plugins/base-images/ubuntu/Dockerfile`) installs `supervisord` as the process manager and `entrypoint.sh` as PID 1. At container start, the entrypoint:
 
 1. Creates a user matching `HOST_UID` / `HOST_GID` / `HOST_USER`
 2. Sets the password from `HOST_PASSWORD`
@@ -84,11 +111,31 @@ The base image (`Dockerfile.base`) installs `supervisord` as the process manager
 5. Starts D-Bus (if installed), cleans stale locks, regenerates SSH host keys
 6. Launches `supervisord` and traps `SIGTERM` for graceful shutdown
 
+## Desktop Session & Menu Entries
+
+The VNC-family connectors (`kasm`, `vnc`) write a per-container
+`~/.vnc/xstartup` that ends in `exec /usr/local/bin/desktop-session`. That
+launcher contract is owned by the **desktop plugin**: `xfce` and `cinnamon`
+create `/usr/local/bin/desktop-session` (a one-liner `exec startxfce4` /
+`exec cinnamon-session`), so the browser/VNC window always shows the desktop
+environment. Headless `none` tags have no desktop and no session file.
+
+Every **agent plugin** additionally ships a `.desktop` menu entry via
+`rootfs/usr/share/applications/` (`COPY rootfs/ /`) so the tool appears in
+the desktop menu. The same image serves the headless `none` variants, where
+the file is simply inert:
+
+- IDE agents (`ag`, `od`) keep the GUI launcher the package installs
+  (`antigravity.desktop` / `opencode-desktop.desktop`), patched for
+  `--no-sandbox` in their Dockerfile.
+- CLI agents (`agy`, `cc`, `cx`, `gc`, `oc`) ship a `.desktop` file with
+  `Terminal=true`, so clicking the entry runs the TUI inside the desktop's
+  default terminal.
+
 ## Filesystem Layout
 
 ```
 sandbox/
-├── Dockerfile.base             # Layer 1: base (build context = sandbox/)
 └── rootfs/                     # Overlay copied into base image
     ├── usr/local/bin/
     │   ├── entrypoint.sh       # PID 1 init script
@@ -98,8 +145,18 @@ sandbox/
         └── conf.d/ssh.conf     # sshd program definition
 
 plugins/                        # Manifest-driven extension point (PR #6)
+├── base-images/                # Layer 1: base OS images
+│   ├── ubuntu/                 #   default — owns the canonical base Dockerfile
+│   │   ├── manifest.toml
+│   │   └── Dockerfile
+│   └── debian/                 #   alternative — pinned debian:12
+│       ├── manifest.toml
+│       └── Dockerfile
 ├── desktops/
 │   ├── xfce/                   # Layer 2: XFCE4 desktop
+│   │   ├── manifest.toml       #   provides=[display]
+│   │   └── Dockerfile
+│   ├── cinnamon/               # Layer 2: Cinnamon desktop
 │   │   ├── manifest.toml       #   provides=[display]
 │   │   └── Dockerfile
 │   └── none/                   # Layer 2: headless (no-op)
@@ -121,8 +178,11 @@ plugins/                        # Manifest-driven extension point (PR #6)
 │   ├── gc/                     # Layer 3: Node.js + Gemini CLI
 │   │   ├── manifest.toml
 │   │   └── Dockerfile
-│   └── oc/                     # Layer 3: OpenCode CLI (opencode binary)
-│       ├── manifest.toml
+│   ├── oc/                     # Layer 3: OpenCode CLI (opencode binary)
+│   │   ├── manifest.toml
+│   │   └── Dockerfile
+│   └── od/                     # Layer 3: OpenCode Desktop (Electron GUI)
+│       ├── manifest.toml       #   requires=[display]
 │       └── Dockerfile
 └── connectors/
     ├── kasm/                   # Layer 4: KasmVNC + supervisor config
