@@ -10,7 +10,14 @@ FROM ${BASE_IMAGE}
 # ARG and both SHA256 sums together.
 #
 # The .deb is installed via apt (not dpkg -i) so its Depends (libgtk-3-0,
-# libnss3, libsecret-1-0, ...) resolve from the base repos. The postinst is
+# libnss3, libsecret-1-0, ...) resolve from the base repos. The ALSA lib
+# is pulled explicitly: Electron hard-requires libasound.so.2 at launch,
+# but the opencode-desktop .deb does not declare it as a Depends, so
+# without this the app aborts with "error while loading shared libraries:
+# libasound.so.2". The package name is distro-specific: Ubuntu 24.04
+# (noble) renamed it to libasound2t64 (libasound2 is only a virtual
+# package there), while Debian 12 (bookworm) still ships libasound2. The
+# postinst is
 # container-safe: the chrome-sandbox SUID bit is only set when user
 # namespaces are unavailable, and the AppArmor profile install is skipped
 # when apparmor_parser is absent. It installs the app under /opt/OpenCode as
@@ -42,9 +49,12 @@ RUN arch="$(dpkg --print-architecture)" && \
         -o /tmp/opencode.deb && \
     echo "${sha}  /tmp/opencode.deb" | sha256sum -c - && \
     apt-get update && \
-    apt-get install -y --no-install-recommends /tmp/opencode.deb && \
+    if grep -q "ID=debian" /etc/os-release; then ALSA_PKG="libasound2"; else ALSA_PKG="libasound2t64"; fi && \
+    apt-get install -y --no-install-recommends "${ALSA_PKG}" /tmp/opencode.deb && \
     rm /tmp/opencode.deb && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    apt-get autoremove -y && \
+    rm -rf /usr/share/doc/* /usr/share/info/* /usr/share/lintian/* /usr/share/man/* \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* && \
     for f in /usr/share/applications/opencode-desktop.desktop \
              /usr/share/applications/ai.opencode.desktop.desktop; do \
         if [ -f "$f" ]; then \

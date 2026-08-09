@@ -24,10 +24,19 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     tzdata \
     ca-certificates \
     openssh-server \
+    && apt-get autoremove -y && \
+    rm -rf /usr/share/doc/* /usr/share/info/* /usr/share/lintian/* /usr/share/man/* \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Setup Locales
-RUN locale-gen en_US.UTF-8
+# Setup Locales - keep only en_US.UTF-8 and drop the full locale archive,
+# the i18n source data, and all non-English gettext catalogs. LC_ALL=C.UTF-8
+# stays valid because glibc >= 2.35 provides C.UTF-8 as a builtin locale.
+RUN locale-gen en_US.UTF-8 && \
+    rm -rf /usr/lib/locale/locale-archive && \
+    localedef -i en_US -f UTF-8 en_US.UTF-8 && \
+    rm -rf /usr/share/i18n/charmaps /usr/share/i18n/locales && \
+    find /usr/share/locale -mindepth 1 -maxdepth 1 \
+        ! -name 'en_US*' ! -name 'locale.alias' ! -name 'C*' -exec rm -rf {} +
 
 # Setup SSH Config
 RUN mkdir /var/run/sshd && \

@@ -87,12 +87,17 @@ class TestDimensionConstraints:
             assert d == "none"
             assert c == "ssh"
 
-    def test_all_ag_tags_have_xfce(self):
-        """Every default-base ag tag must use a GUI desktop (xfce/cinnamon)."""
+    def test_all_ag_tags_have_gui_desktop(self):
+        """Every default-base ag tag must use a GUI desktop (xfce/cinnamon/lxqt/openbox)."""
         ag_tags = [t for t in VALID_TAGS if t.startswith("ag-")]
-        assert len(ag_tags) == 6
+        assert len(ag_tags) == 12
         for tag in ag_tags:
-            assert "-xfce-" in tag or "-cinnamon-" in tag
+            assert (
+                "-xfce-" in tag
+                or "-cinnamon-" in tag
+                or "-lxqt-" in tag
+                or "-openbox-" in tag
+            )
 
     def test_no_headless_gui_connector_in_valid_tags(self):
         """No *-none-kasm/vnc should appear in VALID_TAGS."""

@@ -20,6 +20,10 @@ ubuntu:24.04 (pinned SHA) / debian:12 (pinned SHA)   ← base dimension (ubuntu 
      │   └─ plugins/agents/od/                        → _od-xfce / _debian_od-xfce
      ├─ plugins/desktops/cinnamon/                    → _base-cinnamon / _debian_base-cinnamon
      │   └─ plugins/agents/*/                         → _*-cinnamon / _debian_*-cinnamon
+     ├─ plugins/desktops/lxqt/                        → _base-lxqt / _debian_base-lxqt
+     │   └─ plugins/agents/*/                         → _*-lxqt / _debian_*-lxqt
+     ├─ plugins/desktops/openbox/                     → _base-openbox / _debian_base-openbox
+     │   └─ plugins/agents/*/                         → _*-openbox / _debian_*-openbox
      └─ plugins/desktops/none/                        → _base-none / _debian_base-none
          ├─ plugins/agents/agy/                       → _agy-none / _debian_agy-none → agy-none-ssh / debian-agy-none-ssh
          ├─ plugins/agents/cc/                        → _cc-none / _debian_cc-none
@@ -86,14 +90,14 @@ visibility to its own files.
 
 ## Build Phases
 
-`./sanity-cli build` (with no arguments) builds all **80 official** images
+`./sanity-cli build` (with no arguments) builds all **158 official** images
 in two phases; non-official tags (e.g. the deprecated `gc-*`) build only
 when named explicitly:
 
 1. **Phase 1: Intermediates** - builds the shared intermediate images
    (`_base`, `_debian_base`, `_base-*`, `_debian_base-*`, `_{agent}-{desktop}`,
    `_debian_{agent}-{desktop}` — one per base).
-2. **Phase 2: Finals** - builds all 80 official final images (40 per base)
+2. **Phase 2: Finals** - builds all 158 official final images (79 per base)
    on top of the intermediates.
 
 `--layer base|desktop|agent|connector` builds up to a layer type (CI use);
@@ -114,11 +118,25 @@ The base image (`plugins/base-images/ubuntu/Dockerfile`) installs `supervisord` 
 ## Desktop Session & Menu Entries
 
 The VNC-family connectors (`kasm`, `vnc`) write a per-container
-`~/.vnc/xstartup` that ends in `exec /usr/local/bin/desktop-session`. That
-launcher contract is owned by the **desktop plugin**: `xfce` and `cinnamon`
-create `/usr/local/bin/desktop-session` (a one-liner `exec startxfce4` /
-`exec cinnamon-session`), so the browser/VNC window always shows the desktop
-environment. Headless `none` tags have no desktop and no session file.
+`~/.vnc/xstartup` that ends in
+`exec dbus-launch --exit-with-session /usr/local/bin/desktop-session`
+(`dbus-launch` guarantees a session bus — Cinnamon, a GNOME fork, hard-fails
+into a black screen without one, and the connectors also create
+`/run/user/$UID` / export `XDG_RUNTIME_DIR`, which systemd would normally
+provide at login). Before that `exec`, the xstartup additionally (a) runs
+`vncconfig -nowin &` so the X11 CLIPBOARD selection is bridged to the
+VNC/RFB clipboard in both directions (required by TigerVNC, also shipped by
+KasmVNC), and (b) merges the desktop's X resources from
+`/etc/X11/Xresources/*` via `xrdb`. Both steps are guarded so they are
+no-ops on desktops that ship neither tool nor resources. That launcher
+contract is owned by the **desktop plugin**:
+`xfce`, `cinnamon`, `lxqt`, and `openbox` create `/usr/local/bin/desktop-session` (a one-liner
+`exec startxfce4` / `exec env XDG_CURRENT_DESKTOP=Cinnamon ... cinnamon-session`
+/ `exec env XDG_CURRENT_DESKTOP=LXQt ... startlxqt`
+/ `exec env XDG_CURRENT_DESKTOP=Openbox ... openbox-session`, the env vars so the desktop's
+components recognize the session), so the browser/VNC
+window always shows the desktop environment. Headless `none` tags have no
+desktop and no session file.
 
 Every **agent plugin** additionally ships a `.desktop` menu entry via
 `rootfs/usr/share/applications/` (`COPY rootfs/ /`) so the tool appears in
@@ -131,6 +149,53 @@ the file is simply inert:
 - CLI agents (`agy`, `cc`, `cx`, `gc`, `oc`) ship a `.desktop` file with
   `Terminal=true`, so clicking the entry runs the TUI inside the desktop's
   default terminal.
+
+The **openbox** desktop ships its own entry point: `agent-starter` at
+`/usr/local/bin/agent-starter` (plus a `Terminal=true` `.desktop` entry and
+a right-click root-menu item). Openbox is just a window manager with no
+panel or desktop icons, so this script is how a user reaches the installed
+agent. It decides at runtime (the openbox layer is built before the agent
+layers):
+
+- **GUI agents** (`ag` Antigravity IDE, `od` OpenCode Desktop): detected via
+  their `.desktop` launchers by `/usr/local/bin/launch-gui-agent`, which
+  scans all `/usr/share/applications/*.desktop` entries and matches by the
+  `Exec=` marker of the GUI binaries (`/opt/OpenCode/ai.opencode.desktop`,
+  `/usr/bin/antigravity`), so it works regardless of the shipped desktop-file
+  name. The
+  session autostart launches the GUI IDE as the main window instead of a
+  terminal, so it is immediately usable in the KasmVNC / noVNC browser view
+  (both connectors provide the session bus, `XDG_RUNTIME_DIR` and DISPLAY the
+  Electron apps need). `agent-starter` does the same when opened from the
+  menu.
+- **CLI agents** (`agy`, `cc`, `cx`, `gc`, `oc`): the script lists the
+  subprojects under `$HOME/workspace`, lets the user pick one, and execs the
+  agent present at runtime (claude / codex / gemini / opencode / agy). The
+  detection combines `command -v` with absolute-path fallbacks for the known
+  install locations, so it also works if the session's `PATH` omits
+  `/usr/local/bin` (where `opencode` and the Antigravity CLI `agy` land). If
+  no project exists yet it prompts for a name, creates the directory and
+  starts the agent inside it. With no agent at all it falls back to a plain
+  shell and prints the current `PATH` as a diagnostic.
+
+The shipped `/etc/xdg/openbox/autostart` paints a solid background (a bare
+WM is otherwise pitch-black), launches the GUI agent or the `agent-starter`
+terminal at session start, and runs XDG autostart entries (its
+`openbox-xdg-autostart` needs `python3-xdg`, installed by the plugin). A
+custom `rc.xml` wires the right-click root menu to the plugin's `menu.xml`
+instead of the missing Debian `debian-menu.xml`, and its `<applications>`
+rules open every normal window (the Agent Starter terminal as well as GUI
+IDEs) fullscreen, so the main app fills the VNC browser view immediately
+(`A-F11` toggles fullscreen, `A-F4` closes the window). Readability over
+VNC is handled by `fonts-dejavu-core`: the theme uses DejaVu Sans at 10pt
+for the titlebar/menus/OSDs, and the shipped `/etc/X11/Xresources/xterm` (a
+file in the Debian-standard directory) is merged via `xrdb` by the
+connector xstartup (and again by the openbox autostart) so xterm
+(agent-starter terminal and CLI-agent TUIs) renders in DejaVu Sans Mono at
+10pt instead of its tiny 8pt default. The same resource file sets
+`XTerm*selectToClipboard: true`, which routes xterm selections to the
+CLIPBOARD selection instead of PRIMARY — without it, the VNC servers do not
+see selected terminal text and copy/paste to the browser fails.
 
 ## Filesystem Layout
 
@@ -159,6 +224,13 @@ plugins/                        # Manifest-driven extension point (PR #6)
 │   ├── cinnamon/               # Layer 2: Cinnamon desktop
 │   │   ├── manifest.toml       #   provides=[display]
 │   │   └── Dockerfile
+│   ├── lxqt/                   # Layer 2: LXQt desktop
+│   │   ├── manifest.toml       #   provides=[display]
+│   │   └── Dockerfile
+│   ├── openbox/                # Layer 2: Openbox window manager
+│   │   ├── manifest.toml       #   provides=[display]
+│   │   ├── Dockerfile
+│   │   └── rootfs/             #   agent-starter entry + openbox menu
 │   └── none/                   # Layer 2: headless (no-op)
 │       ├── manifest.toml
 │       └── Dockerfile
@@ -199,6 +271,23 @@ plugins/                        # Manifest-driven extension point (PR #6)
         ├── manifest.toml
         └── Dockerfile
 ```
+
+### KasmVNC TLS certificate
+
+The `kasm` connector serves the browser desktop over HTTPS. Instead of the
+anonymous Debian snakeoil cert (which triggers *both* a hostname-mismatch and
+a trust error), the image bakes a long-lived development certificate at build
+time via `plugins/connectors/kasm/rootfs/usr/local/bin/gen-localhost-certs.sh`:
+
+- A server cert valid for `DNS:localhost` / `IP:127.0.0.1` (no hostname
+  warning), presented together with its signing CA as the chain.
+- A signing CA at `/etc/ssl/local/gravity-ca.pem`. Importing that CA **once**
+  into the browser/OS trust store silences the self-signed trust warning
+  entirely (e.g. on Linux: `openssl x509 -in <ca.pem> -out ca.crt` and import
+  into the browser certificate store, or `cp` it to `/usr/local/share/ca-certificates/`
+  + `update-ca-certificates`).
+- Certs are baked, not regenerated per container, so a single CA import keeps
+  working across container re-creations and image rebuilds.
 
 ### Adding a new plugin
 

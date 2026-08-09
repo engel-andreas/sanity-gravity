@@ -136,7 +136,7 @@ class TestCliEnumeration:
 
         # gc tags across every base dimension (parse_tag → (base, agent, ...)).
         gc_tags = [t for t in VALID_TAGS if parse_tag(t)[1] == "gc"]
-        assert len(gc_tags) == 14
+        assert len(gc_tags) == 26
         assert not any(parse_tag(t)[1] == "gc" for t in OFFICIAL_TAGS)
         # Everything else is untouched by gc's retirement.
         assert set(VALID_TAGS) - set(gc_tags) == set(OFFICIAL_TAGS)

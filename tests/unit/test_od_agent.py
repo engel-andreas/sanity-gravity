@@ -35,7 +35,8 @@ from sanity_gravity.plugins.registry import (  # noqa: E402
 PLUGINS_DIR = _REPO_ROOT / "plugins"
 
 # A GUI agent pairs with every GUI desktop/connector combination that
-# itself satisfies the display rule: xfce or cinnamon x {kasm, ssh, vnc}.
+# itself satisfies the display rule: xfce, cinnamon, lxqt or openbox
+# x {kasm, ssh, vnc}.
 OD_VALID_TAGS = [
     Tag("od", "xfce", "kasm"),
     Tag("od", "xfce", "ssh"),
@@ -43,6 +44,12 @@ OD_VALID_TAGS = [
     Tag("od", "cinnamon", "kasm"),
     Tag("od", "cinnamon", "ssh"),
     Tag("od", "cinnamon", "vnc"),
+    Tag("od", "lxqt", "kasm"),
+    Tag("od", "lxqt", "ssh"),
+    Tag("od", "lxqt", "vnc"),
+    Tag("od", "openbox", "kasm"),
+    Tag("od", "openbox", "ssh"),
+    Tag("od", "openbox", "vnc"),
 ]
 
 
@@ -92,13 +99,15 @@ def test_od_is_official(reg):
 
 
 def test_od_tags_enter_the_official_matrix():
-    """All six od-* tags must reach OFFICIAL_TAGS (the `list --json`
+    """All twelve od-* tags must reach OFFICIAL_TAGS (the `list --json`
     source CI enumerates its matrices from)."""
     from sanity_gravity.cli.registry import OFFICIAL_TAGS, tag_tier
 
     od_tags = [t for t in OFFICIAL_TAGS if t.startswith("od-")]
     assert sorted(od_tags) == [
         "od-cinnamon-kasm", "od-cinnamon-ssh", "od-cinnamon-vnc",
+        "od-lxqt-kasm", "od-lxqt-ssh", "od-lxqt-vnc",
+        "od-openbox-kasm", "od-openbox-ssh", "od-openbox-vnc",
         "od-xfce-kasm", "od-xfce-ssh", "od-xfce-vnc",
     ]
     for t in od_tags:

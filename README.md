@@ -109,7 +109,7 @@ Every image is described by a tag: **`{base-image-}agent-desktop-connector`**. P
 
 > **Heads-up:** `gc` (Gemini CLI) lost its free tier on 2026-06-18 and now requires a paid Gemini API key / Code Assist license. New users should prefer **`agy`** (Antigravity CLI), Google's official successor — already shipped here.
 
-There are **94 valid combinations** in total (default Ubuntu base, plus a `debian-`-prefixed variant of every tag). See [Modular Tag System](docs/tags.md) for the full matrix, dimension model, and constraint rules.
+There are **178 valid combinations** in total (default Ubuntu base, plus a `debian-`-prefixed variant of every tag). See [Modular Tag System](docs/tags.md) for the full matrix, dimension model, and constraint rules.
 
 Missing your favorite agent? Adding one takes a manifest plus a Dockerfile - see [Bring Your Own Agent](docs/bring-your-own-agent.md).
 
@@ -238,7 +238,7 @@ sanity-gravity/
 │   └── rootfs/                 # Shared overlay (entrypoint, gravity-cli, supervisor configs)
 ├── plugins/                    # Manifest-driven plugins (PR #6)
 │   ├── base-images/            #   ubuntu (default), debian
-│   ├── desktops/               #   xfce, none, cinnamon
+│   ├── desktops/               #   xfce, cinnamon, lxqt, openbox, none
 │   ├── agents/                 #   ag, agy, gc, cc, cx, oc, od
 │   └── connectors/             #   kasm (KasmVNC), vnc (TigerVNC), ssh
 ├── config/                     # Runtime-generated docker-compose files (git-ignored)
