@@ -1,0 +1,148 @@
+# Agent Resource Synchronization Configuration
+# This file defines how resources are discovered and distributed to agents.
+
+version = "1"
+
+# ──────────────────────────────────────────────────────────────
+# Resource Types: What can be synced
+# ──────────────────────────────────────────────────────────────
+[resource_types.skills]
+# Skills are directories containing SKILL.md files
+pattern = "SKILL.md"
+type = "directory"
+marker = "SKILL.md"
+
+[resource_types.agents]
+# Agent definitions (custom agents, personas, etc.)
+pattern = "AGENT.md"
+type = "directory"
+marker = "AGENT.md"
+
+[resource_types.mcp]
+# MCP server configurations
+pattern = "*.mcp.json"
+type = "file"
+
+[resource_types.commands]
+# Custom commands (slash commands, etc.)
+pattern = "COMMAND.md"
+type = "directory"
+marker = "COMMAND.md"
+
+[resource_types.references]
+# Reference documentation
+pattern = "REFERENCE.md"
+type = "directory"
+marker = "REFERENCE.md"
+
+# ──────────────────────────────────────────────────────────────
+# Workspace Sources: Where to find resources
+# ──────────────────────────────────────────────────────────────
+[workspace]
+root = "/home/${USER_NAME}/workspace"
+
+# Subdirectories to scan for each resource type
+[workspace.sources]
+skills = ["skills", "skills-*"]
+agents = ["agents"]
+mcp = ["mcp", ".mcp"]
+commands = ["commands"]
+references = ["references", "docs"]
+
+# Exclusion patterns
+exclude = [".git", "node_modules", "__pycache__", ".venv"]
+
+# ──────────────────────────────────────────────────────────────
+# Agent Definitions: Where to put resources for each agent
+# ──────────────────────────────────────────────────────────────
+
+# --- OpenCode CLI (oc) ---
+[agents.oc]
+name = "opencode-cli"
+
+[agents.oc.skills]
+method = "config"
+config_file = "/home/${USER_NAME}/.config/opencode/opencode.json"
+config_key = "skills.paths"
+
+# --- OpenCode Desktop (od) ---
+[agents.od]
+name = "opencode-desktop"
+inherits = "oc"
+
+# --- Claude Code (cc) ---
+[agents.cc]
+name = "claude-cli"
+
+[agents.cc.skills]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.claude/skills"
+
+[agents.cc.agents]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.claude/agents"
+
+[agents.cc.mcp]
+method = "file"
+target_file = "/home/${USER_NAME}/.claude/mcp.json"
+
+# --- Codex CLI (cx) ---
+[agents.cx]
+name = "codex-cli"
+
+[agents.cx.skills]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.agents/skills"
+
+[agents.cx.mcp]
+method = "file"
+target_file = "/home/${USER_NAME}/.codex/mcp.json"
+
+# --- Gemini CLI (gc) ---
+[agents.gc]
+name = "gemini-cli"
+deprecated = true
+
+[agents.gc.skills]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.gemini/skills"
+
+# --- Antigravity IDE (ag) ---
+[agents.ag]
+name = "antigravity-ide"
+
+[agents.ag.skills]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.gemini/config/skills"
+
+[agents.ag.mcp]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.gemini/config/mcp"
+
+# --- Antigravity CLI (agy) ---
+[agents.agy]
+name = "antigravity-cli"
+
+[agents.agy.skills]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.gemini/antigravity-cli/skills"
+
+[agents.agy.mcp]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.gemini/antigravity-cli/mcp"
+
+# ──────────────────────────────────────────────────────────────
+# Sync Behavior
+# ──────────────────────────────────────────────────────────────
+[sync]
+# What to sync on boot
+on_boot = ["skills", "agents", "mcp"]
+
+# What to sync on user request (--all)
+on_demand = ["skills", "agents", "mcp", "commands", "references"]
+
+# Ownership fix after sync
+chown = true
+
+# Logging
+verbose = false

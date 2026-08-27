@@ -1,0 +1,478 @@
+#!/bin/bash
+# sync-agent-resources — Central resource synchronization for all agents
+#
+# Usage:
+#   sync-agent-resources [--all|--resource TYPE...] [--agent SLUG...] [--dry-run]
+#
+# Options:
+#   --all           Sync all resource types (default: on_boot list)
+#   --resource TYPE Sync specific resource type(s)
+#   --agent SLUG    Sync only for specific agent(s)
+#   --dry-run       Show what would be done without making changes
+#   --verbose       Verbose output
+
+set -euo pipefail
+
+# ──────────────────────────────────────────────────────────────
+# Constants
+# ──────────────────────────────────────────────────────────────
+CONFIG_FILE="/etc/agent-resources.toml"
+WORKSPACE="${HOME}/workspace"
+USER_NAME="${USER_NAME:-$(whoami)}"
+HOST_UID="${HOST_UID:-$(id -u)}"
+HOST_GID="${HOST_GID:-$(id -g)}"
+
+# ──────────────────────────────────────────────────────────────
+# Parse Arguments
+# ──────────────────────────────────────────────────────────────
+SYNC_ALL=false
+DRY_RUN=false
+VERBOSE=false
+RESOURCE_TYPES=()
+AGENT_SLUGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --all)
+            SYNC_ALL=true
+            shift
+            ;;
+        --resource)
+            RESOURCE_TYPES+=("$2")
+            shift 2
+            ;;
+        --agent)
+            AGENT_SLUGS+=("$2")
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --verbose|-v)
+            VERBOSE=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# ──────────────────────────────────────────────────────────────
+# Config Parser (TOML → Bash associative arrays)
+# ──────────────────────────────────────────────────────────────
+declare -A CONFIG
+
+parse_config() {
+    local current_section=""
+    
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// /}" ]] && continue
+        
+        # Section headers
+        if [[ "$line" =~ ^\[([a-zA-Z0-9_.]+)\]$ ]]; then
+            current_section="${BASH_REMATCH[1]}"
+            continue
+        fi
+        
+        # Key = Value
+        if [[ "$line" =~ ^[[:space:]]*([a-zA-Z0-9_.]+)[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+            local key="${BASH_REMATCH[1]}"
+            local value="${BASH_REMATCH[2]}"
+            
+            # Remove quotes from value
+            value="${value%\"}"
+            value="${value#\"}"
+            value="${value%\'}"
+            value="${value#\'}"
+            
+            # Store in associative array
+            CONFIG["${current_section}.${key}"]="$value"
+        fi
+    done < "$CONFIG_FILE"
+}
+
+# ──────────────────────────────────────────────────────────────
+# Expand variables in config values
+# ──────────────────────────────────────────────────────────────
+expand_vars() {
+    local value="$1"
+    value="${value//\$\{USER_NAME\}/$USER_NAME}"
+    value="${value//\$\{HOME\}/$HOME}"
+    value="${value//\$\{HOST_UID\}/$HOST_UID}"
+    value="${value//\$\{HOST_GID\}/$HOST_GID}"
+    echo "$value"
+}
+
+# ──────────────────────────────────────────────────────────────
+# Resource Discovery
+# ──────────────────────────────────────────────────────────────
+discover_resources() {
+    local resource_type="$1"
+    local pattern="${CONFIG["resource_types.${resource_type}.pattern"]}"
+    local marker="${CONFIG["resource_types.${resource_type}.marker"]:-}"
+    
+    # Get sources for this resource type
+    local sources_str="${CONFIG["workspace.sources.${resource_type}"]:-}"
+    if [[ -z "$sources_str" ]]; then
+        # Default: scan entire workspace
+        sources_str="."
+    fi
+    
+    # Convert TOML array to bash array
+    local sources=()
+    sources_str="${sources_str//\[/}"
+    sources_str="${sources_str//\]/}"
+    IFS=',' read -ra sources <<< "$sources_str"
+    
+    local resources=()
+    
+    for source in "${sources[@]}"; do
+        source=$(echo "$source" | xargs)  # Trim whitespace
+        source=$(expand_vars "$source")
+        
+        local search_dir="$WORKSPACE/$source"
+        [[ "$source" == "." ]] && search_dir="$WORKSPACE"
+        
+        if [[ -d "$search_dir" ]]; then
+            while IFS= read -r match; do
+                if [[ -n "$marker" ]]; then
+                    # Return parent directory for directory-type resources
+                    resources+=("$(dirname "$match")")
+                else
+                    resources+=("$match")
+                fi
+            done < <(find "$search_dir" \
+                -name .git -prune -o \
+                -name node_modules -prune -o \
+                -name __pycache__ -prune -o \
+                -type f -name "$pattern" -print 2>/dev/null)
+        fi
+    done
+    
+    # Deduplicate
+    printf '%s\n' "${resources[@]}" | sort -u
+}
+
+# ──────────────────────────────────────────────────────────────
+# Symlink Method
+# ──────────────────────────────────────────────────────────────
+sync_symlink() {
+    local source="$1"
+    local target_dir="$2"
+    local link_name="${3:-$(basename "$source")}"
+    local target="$target_dir/$link_name"
+    
+    if $DRY_RUN; then
+        echo "[dry-run] Would link: $target -> $source"
+        return 0
+    fi
+    
+    mkdir -p "$target_dir"
+    
+    # Check if target exists and is not a symlink
+    if [[ -e "$target" ]] && [[ ! -L "$target" ]]; then
+        echo "  Skipping '$link_name': exists and is not a symlink."
+        return 0
+    fi
+    
+    # Check if symlink already points to correct location
+    if [[ -L "$target" ]] && [[ "$(readlink "$target")" == "$source" ]]; then
+        $VERBOSE && echo "  Already linked: $link_name"
+        return 0
+    fi
+    
+    # Create or update symlink
+    ln -sfn "$source" "$target"
+    echo "  Linked: $link_name"
+}
+
+# ──────────────────────────────────────────────────────────────
+# Config Method (JSON modification)
+# ──────────────────────────────────────────────────────────────
+sync_config() {
+    local config_file="$1"
+    local config_key="$2"
+    local workspace_path="$3"
+    
+    if $DRY_RUN; then
+        echo "[dry-run] Would update config: $config_file ($config_key)"
+        return 0
+    fi
+    
+    mkdir -p "$(dirname "$config_file")"
+    
+    # Ensure config file exists with minimal structure
+    if [[ ! -f "$config_file" ]]; then
+        echo '{}' > "$config_file"
+    fi
+    
+    # Use python for reliable JSON manipulation
+    python3 << PYEOF
+import json
+import sys
+
+config_file = "$config_file"
+config_key = "$config_key"
+workspace = "$workspace_path"
+
+try:
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+except:
+    config = {}
+
+# Navigate to nested key (e.g., "skills.paths")
+keys = config_key.split('.')
+current = config
+for key in keys[:-1]:
+    if key not in current:
+        current[key] = {}
+    current = current[key]
+
+# Add workspace path if not present
+if keys[-1] not in current:
+    current[keys[-1]] = []
+if workspace not in current[keys[-1]]:
+    current[keys[-1]].append(workspace)
+
+with open(config_file, 'w') as f:
+    json.dump(config, f, indent=2)
+PYEOF
+    
+    echo "  Updated config: $config_file"
+}
+
+# ──────────────────────────────────────────────────────────────
+# File Merge Method (for MCP configs)
+# ──────────────────────────────────────────────────────────────
+sync_file_merge() {
+    local source_file="$1"
+    local target_file="$2"
+    
+    if $DRY_RUN; then
+        echo "[dry-run] Would merge: $source_file -> $target_file"
+        return 0
+    fi
+    
+    mkdir -p "$(dirname "$target_file")"
+    
+    # If target doesn't exist, just copy
+    if [[ ! -f "$target_file" ]]; then
+        cp "$source_file" "$target_file"
+        echo "  Copied: $(basename "$source_file")"
+        return 0
+    fi
+    
+    # Merge JSON files (source overrides target)
+    python3 << PYEOF
+import json
+
+with open("$target_file", 'r') as f:
+    target = json.load(f)
+
+with open("$source_file", 'r') as f:
+    source = json.load(f)
+
+# Deep merge
+def merge(target, source):
+    for key, value in source.items():
+        if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+            merge(target[key], value)
+        else:
+            target[key] = value
+
+merge(target, source)
+
+with open("$target_file", 'w') as f:
+    json.dump(target, f, indent=2)
+PYEOF
+    
+    echo "  Merged: $(basename "$source_file")"
+}
+
+# ──────────────────────────────────────────────────────────────
+# Cleanup stale symlinks
+# ──────────────────────────────────────────────────────────────
+cleanup_stale_links() {
+    local target_dir="$1"
+    
+    [[ -d "$target_dir" ]] || return 0
+    
+    local pruned=0
+    for entry in "$target_dir"/*; do
+        [[ -L "$entry" ]] || continue
+        local dest
+        dest=$(readlink "$entry")
+        
+        # Skip if not pointing into workspace
+        case "$dest" in
+            "$WORKSPACE"/*) ;;
+            *) continue ;;
+        esac
+        
+        # Remove if target no longer exists
+        if [[ ! -e "$dest" ]]; then
+            rm -f "$entry"
+            pruned=$((pruned + 1))
+            $VERBOSE && echo "  Pruned: $(basename "$entry")"
+        fi
+    done
+    
+    [[ $pruned -gt 0 ]] && echo "  Pruned $pruned stale links"
+}
+
+# ──────────────────────────────────────────────────────────────
+# Main Sync Logic
+# ──────────────────────────────────────────────────────────────
+main() {
+    # Check if config exists
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo "ERROR: Config file not found: $CONFIG_FILE" >&2
+        exit 1
+    fi
+    
+    # Parse config
+    parse_config
+    
+    # Check if workspace exists
+    if [[ ! -d "$WORKSPACE" ]]; then
+        echo "Workspace '$WORKSPACE' not found — nothing to sync."
+        exit 0
+    fi
+    
+    # Determine which resource types to sync
+    if $SYNC_ALL; then
+        IFS=',' read -ra RESOURCE_TYPES <<< "${CONFIG["sync.on_demand"]}"
+    elif [[ ${#RESOURCE_TYPES[@]} -eq 0 ]]; then
+        IFS=',' read -ra RESOURCE_TYPES <<< "${CONFIG["sync.on_boot"]}"
+    fi
+    
+    # Determine which agents to sync
+    if [[ ${#AGENT_SLUGS[@]} -eq 0 ]]; then
+        # Get all agent slugs from config
+        for key in "${!CONFIG[@]}"; do
+            if [[ "$key" =~ ^agents\.([a-z]+)\.name$ ]]; then
+                AGENT_SLUGS+=("${BASH_REMATCH[1]}")
+            fi
+        done
+    fi
+    
+    echo "━━━ Agent Resource Sync ━━━"
+    
+    # Perform sync for each resource type and agent
+    for resource_type in "${RESOURCE_TYPES[@]}"; do
+        resource_type=$(echo "$resource_type" | xargs)
+        echo ""
+        echo "━━━ $resource_type ━━━"
+        
+        # Discover resources
+        resources=()
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && resources+=("$line")
+        done < <(discover_resources "$resource_type")
+        
+        echo "Found ${#resources[@]} $resource_type resource(s)"
+        
+        # Sync to each agent
+        for agent_slug in "${AGENT_SLUGS[@]}"; do
+            agent_slug=$(echo "$agent_slug" | xargs)
+            
+            # Handle inheritance
+            local inherits="${CONFIG["agents.${agent_slug}.inherits"]:-}"
+            local prefix="agents.${agent_slug}"
+            if [[ -n "$inherits" ]]; then
+                prefix="agents.${inherits}"
+            fi
+            
+            local method="${CONFIG["${prefix}.${resource_type}.method"]:-}"
+            
+            if [[ -z "$method" ]]; then
+                $VERBOSE && echo "  $agent_slug: no config for $resource_type"
+                continue
+            fi
+            
+            echo "  → $agent_slug ($method)"
+            
+            case "$method" in
+                symlink)
+                    local target_dir="${CONFIG["${prefix}.${resource_type}.target_dir"]}"
+                    target_dir=$(expand_vars "$target_dir")
+                    
+                    for resource in "${resources[@]}"; do
+                        sync_symlink "$resource" "$target_dir"
+                    done
+                    
+                    # Cleanup stale links
+                    cleanup_stale_links "$target_dir"
+                    ;;
+                config)
+                    local config_file="${CONFIG["${prefix}.${resource_type}.config_file"]}"
+                    local config_key="${CONFIG["${prefix}.${resource_type}.config_key"]}"
+                    config_file=$(expand_vars "$config_file")
+                    
+                    # For config method, we add the workspace root
+                    sync_config "$config_file" "$config_key" "$WORKSPACE"
+                    ;;
+                file)
+                    local target_file="${CONFIG["${prefix}.${resource_type}.target_file"]}"
+                    target_file=$(expand_vars "$target_file")
+                    
+                    # Merge each resource file into target
+                    for resource in "${resources[@]}"; do
+                        if [[ -f "$resource" ]]; then
+                            sync_file_merge "$resource" "$target_file"
+                        fi
+                    done
+                    ;;
+                *)
+                    echo "    Unknown method: $method" >&2
+                    ;;
+            esac
+        done
+    done
+    
+    # Fix ownership if configured
+    if [[ "${CONFIG["sync.chown"]}" == "true" ]]; then
+        echo ""
+        echo "━━━ Fixing ownership ━━━"
+        for agent_slug in "${AGENT_SLUGS[@]}"; do
+            agent_slug=$(echo "$agent_slug" | xargs)
+            
+            local inherits="${CONFIG["agents.${agent_slug}.inherits"]:-}"
+            local prefix="agents.${agent_slug}"
+            if [[ -n "$inherits" ]]; then
+                prefix="agents.${inherits}"
+            fi
+            
+            for resource_type in "${RESOURCE_TYPES[@]}"; do
+                resource_type=$(echo "$resource_type" | xargs)
+                
+                local target_dir="${CONFIG["${prefix}.${resource_type}.target_dir"]:-}"
+                if [[ -n "$target_dir" ]]; then
+                    target_dir=$(expand_vars "$target_dir")
+                    if [[ -d "$target_dir" ]]; then
+                        chown -R "$HOST_UID":"$HOST_GID" "$target_dir" 2>/dev/null || true
+                    fi
+                fi
+                
+                local target_file="${CONFIG["${prefix}.${resource_type}.target_file"]:-}"
+                if [[ -n "$target_file" ]]; then
+                    target_file=$(expand_vars "$target_file")
+                    if [[ -f "$target_file" ]]; then
+                        chown "$HOST_UID":"$HOST_GID" "$target_file" 2>/dev/null || true
+                    fi
+                fi
+            done
+        done
+    fi
+    
+    echo ""
+    echo "━━━ Sync complete ━━━"
+}
+
+main "$@"

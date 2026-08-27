@@ -1,0 +1,18 @@
+[plugin]
+slug = "jan"
+name = "Jan.ai"
+kind = "provider"
+api_version = "1"
+
+[build]
+dockerfile = "Dockerfile"
+
+[ports.api]
+internal = 1337
+default = 1337
+env_var = "JAN_PORT"
+legacy_slug = "jan"
+
+[environment]
+JAN_BASE_URL = "http://localhost:${JAN_PORT:-1337}/v1"
+OPENAI_BASE_URL = "http://localhost:${JAN_PORT:-1337}/v1"
