@@ -1,0 +1,13 @@
+[plugin]
+slug = "codium"
+name = "vscodium"
+kind = "agent"
+api_version = "1"
+tier = "official"
+
+[capabilities]
+provides = []
+requires = ["display"]
+
+[build]
+dockerfile = "Dockerfile"

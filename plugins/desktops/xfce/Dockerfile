@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xfce4-clipman-plugin \
     xfce4-whiskermenu-plugin \
     thunar-archive-plugin \
+    # --- Core Utilities ---
+    mousepad \
     dbus \
     dbus-x11 \
     x11-utils \
