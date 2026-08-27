@@ -59,6 +59,11 @@ def _plugin_dockerfile(kind: str, slug: str) -> str:
     return str(get_registry().get(kind, slug).dockerfile_path)
 
 
+def _layer_dockerfile(slug: str) -> str:
+    """Dockerfile for an agent-position plugin (agent **or** IDE)."""
+    return str(get_registry().get_layer(slug).dockerfile_path)
+
+
 def _base_dockerfile(base_image: str) -> str:
     """Dockerfile for a base image: the plugin's when registered, else
     the default (ubuntu) base plugin — ubuntu stays the fallback image
@@ -133,7 +138,7 @@ def _resolve_build_chain(tag: str) -> list[tuple[str, str, str | None]]:
         (_plugin_dockerfile("desktop", desktop),
          _desktop_layer_name(base_image, desktop),
          _base_layer_name(base_image)),
-        (_plugin_dockerfile("agent", agent),
+        (_layer_dockerfile(agent),
          _agent_layer_name(base_image, agent, desktop),
          _desktop_layer_name(base_image, desktop)),
         (_plugin_dockerfile("connector", connector),
@@ -182,7 +187,7 @@ def _resolve_composite_build_chain(tag: str) -> list[tuple[str, str, str | None]
     parent = _desktop_layer_name(base_image, desktop)
     for i, agent in enumerate(agents):
         layer_name = _composite_agent_layer_name(base_image, agents[:i + 1], desktop)
-        chain.append((_plugin_dockerfile("agent", agent),
+        chain.append((_layer_dockerfile(agent),
                        layer_name,
                        parent))
         parent = layer_name
@@ -245,13 +250,17 @@ def _resolve_intermediate_chain(target: str) -> list[tuple[str, str, str | None]
         ]
     # kind == "agent": detail is ``agent-desktop``
     agent, desktop = detail.split("-", 1)
-    if agent not in reg.agents or desktop not in reg.desktops:
+    if desktop not in reg.desktops:
+        raise ValueError(f"Unknown intermediate target: {target}")
+    try:
+        reg.get_layer(agent)
+    except KeyError:
         raise ValueError(f"Unknown intermediate target: {target}")
     return [
         (_base_dockerfile(base_image), _base_layer_name(base_image), None),
         (_plugin_dockerfile("desktop", desktop),
          _desktop_layer_name(base_image, desktop), _base_layer_name(base_image)),
-        (_plugin_dockerfile("agent", agent), target, _desktop_layer_name(base_image, desktop)),
+        (_layer_dockerfile(agent), target, _desktop_layer_name(base_image, desktop)),
     ]
 
 

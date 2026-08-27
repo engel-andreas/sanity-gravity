@@ -54,6 +54,13 @@ def _legacy_dim_dicts(reg):
             "requires_gui": "display" in m.requires,
             "tier": m.tier,
         }
+    ides: dict[str, dict] = {}
+    for slug, m in reg.ides.items():
+        ides[slug] = {
+            "name": m.name,
+            "requires_gui": "display" in m.requires,
+            "tier": m.tier,
+        }
     connectors: dict[str, dict] = {}
     for slug, m in reg.connectors.items():
         connectors[slug] = {
@@ -75,7 +82,7 @@ def _legacy_dim_dicts(reg):
             "host_ports": {p.label: p.default for p in m.ports},
             "tier": m.tier,
         }
-    return bases, agents, connectors, desktops, providers
+    return bases, agents, ides, connectors, desktops, providers
 
 
 def parse_tag(tag):
@@ -109,9 +116,10 @@ def parse_tag(tag):
             f"Unknown base image '{base_image}'. "
             f"Valid: {', '.join(reg.base_images.keys())}"
         )
-    if agent not in reg.agents:
+    if agent not in reg.layer_slugs():
         raise ValueError(
-            f"Unknown agent '{agent}'. Valid: {', '.join(reg.agents.keys())}"
+            f"Unknown agent '{agent}'. "
+            f"Valid: {', '.join(reg.layer_slugs())}"
         )
     if desktop not in reg.desktops:
         raise ValueError(
@@ -129,7 +137,7 @@ def parse_tag(tag):
     except CapabilityConflictError as exc:
         if "display" in exc.missing:
             connector_m = reg.connectors[connector]
-            agent_m = reg.agents[agent]
+            agent_m = reg.get_layer(agent)
             if "display" in connector_m.requires:
                 raise ValueError(
                     f"Connector '{connector}' requires a GUI desktop, "
@@ -192,9 +200,9 @@ def construct_tag(
             f"Valid: {', '.join(reg.base_images.keys())}"
         )
     for a in agents:
-        if a not in reg.agents:
+        if a not in reg.layer_slugs():
             raise ValueError(
-                f"Unknown agent '{a}'. Valid: {', '.join(reg.agents.keys())}"
+                f"Unknown agent '{a}'. Valid: {', '.join(reg.layer_slugs())}"
             )
     if desktop not in reg.desktops:
         raise ValueError(
@@ -295,7 +303,7 @@ def parse_composite_tag(tag: str) -> dict[str, list[str]]:
     if result["base_image"] and result["base_image"][0] not in reg.base_images:
         raise ValueError(f"Unknown base image '{result['base_image'][0]}'")
     for a in result["agents"]:
-        if a not in reg.agents:
+        if a not in reg.layer_slugs():
             raise ValueError(f"Unknown agent '{a}'")
     if result["desktop"][0] not in reg.desktops:
         raise ValueError(f"Unknown desktop '{result['desktop'][0]}'")
@@ -357,7 +365,7 @@ def deprecation_warning(tag: str) -> str | None:
 
 # Legacy module-level views. Computed once at import time; they stay
 # stable across a process because the manifest set is filesystem-bound.
-BASES, AGENTS, CONNECTORS, DESKTOPS, PROVIDERS = _legacy_dim_dicts(get_registry())
+BASES, AGENTS, IDES, CONNECTORS, DESKTOPS, PROVIDERS = _legacy_dim_dicts(get_registry())
 VALID_TAGS = generate_valid_tags()
 # The CI build/verify and release publish matrix: official tier only.
 # Community/deprecated tags stay in VALID_TAGS (parse + lifecycle) but

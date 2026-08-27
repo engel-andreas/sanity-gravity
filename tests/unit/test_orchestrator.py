@@ -281,6 +281,13 @@ class _StubRegistry:
             *self.connectors.values(),
         ]
 
+    def get_layer(self, slug):
+        """Mirror the registry's agent-slot lookup for the up hooks."""
+        for bucket in (self.agents, self.connectors, self.desktops):
+            if slug in bucket:
+                return bucket[slug]
+        raise KeyError(slug)
+
 
 def _connector_manifest(slug, *ports):
     return PluginManifest(

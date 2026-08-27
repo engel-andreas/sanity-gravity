@@ -57,10 +57,11 @@ __all__ = ["PluginRegistry", "default_registry", "reset_default_registry"]
 _LOADED_HOOK_MODULES: set[str] = set()
 
 
-_VALID_KINDS: tuple[str, ...] = ("base-image", "agent", "desktop", "connector", "provider")
+_VALID_KINDS: tuple[str, ...] = ("base-image", "agent", "ides", "desktop", "connector", "provider")
 _KIND_TO_PLURAL: dict[str, str] = {
     "base-image": "base-images",
     "agent": "agents",
+    "ides": "ides",
     "desktop": "desktops",
     "connector": "connectors",
     "provider": "providers",
@@ -72,18 +73,25 @@ class PluginRegistry:
 
     Attributes
     ----------
-    base_images / agents / desktops / connectors / providers:
+    base_images / agents / ides / desktops / connectors / providers:
         ``dict[slug -> PluginManifest]`` for that kind.
     root:
         Root of the plugin tree (e.g. ``plugins/``). Useful for callers
         that need to resolve relative manifest paths.
+
+    IDEs are the categorical counterpart of :attr:`agents`: they occupy the
+    same build layer (installed on top of the desktop, before the
+    connector) and the same position in the dimension tag, so ``ides``
+    plugins stay addressable through every agent-slot code path via
+    :meth:`get_layer` / :meth:`layer_slugs`.
     """
 
-    __slots__ = ("base_images", "agents", "desktops", "connectors", "providers", "root", "_loaded_hook_modules")
+    __slots__ = ("base_images", "agents", "ides", "desktops", "connectors", "providers", "root", "_loaded_hook_modules")
 
     def __init__(self, root: Path | None = None) -> None:
         self.base_images: dict[str, PluginManifest] = {}
         self.agents: dict[str, PluginManifest] = {}
+        self.ides: dict[str, PluginManifest] = {}
         self.desktops: dict[str, PluginManifest] = {}
         self.connectors: dict[str, PluginManifest] = {}
         self.providers: dict[str, PluginManifest] = {}
@@ -131,6 +139,18 @@ class PluginRegistry:
                     raise ManifestError(
                         f"{manifest_path}: duplicate slug '{m.slug}' for kind '{kind}'"
                     )
+                # Agent-position slugs must be unique across the ``agent``
+                # and ``ides`` buckets: the dimension tag names this slot
+                # once, and ``get_layer`` has no way to prefer one over
+                # the other.
+                if kind in ("agent", "ides"):
+                    other = reg.ides if kind == "agent" else reg.agents
+                    if m.slug in other:
+                        raise ManifestError(
+                            f"{manifest_path}: slug '{m.slug}' collides between "
+                            "kinds 'agent' and 'ides' (both fill the tag's "
+                            "agent position)"
+                        )
                 bucket[m.slug] = m
 
                 hooks_path = slug_dir / "hooks.py"
@@ -185,6 +205,8 @@ class PluginRegistry:
             return self.base_images
         if kind == "agent":
             return self.agents
+        if kind == "ides":
+            return self.ides
         if kind == "desktop":
             return self.desktops
         if kind == "connector":
@@ -203,15 +225,35 @@ class PluginRegistry:
             raise KeyError(f"no {kind} plugin with slug {slug!r}")
         return bucket[slug]
 
+    def get_layer(self, slug: str) -> PluginManifest:
+        """Resolve an agent-position slug (agent **or** IDE) or raise KeyError.
+
+        The dimension tag's agent slot is filled by either an ``agent``
+        or an ``ides`` plugin (they build on the same layer, after the
+        desktop and before the connector). ``get_layer`` is the single
+        accessor for that slot; pure-category code (status listing,
+        ``ide`` verb) still reads :attr:`agents` / :attr:`ides`.
+        """
+        if slug in self.agents:
+            return self.agents[slug]
+        if slug in self.ides:
+            return self.ides[slug]
+        raise KeyError(f"no agent/IDE plugin with slug {slug!r}")
+
+    def layer_slugs(self) -> list[str]:
+        """Agent-position slugs (agents first, then IDEs), stable order."""
+        return [*self.agents.keys(), *self.ides.keys()]
+
     def all_slugs(self, kind: str) -> list[str]:
         """Slugs registered for ``kind``, in stable insertion order."""
         return list(self._bucket(kind).keys())
 
     def all_manifests(self) -> list[PluginManifest]:
-        """Flat list of every registered manifest (base-images → agents → desktops → connectors → providers)."""
+        """Flat list of every registered manifest (base-images → agents → ides → desktops → connectors → providers)."""
         return [
             *self.base_images.values(),
             *self.agents.values(),
+            *self.ides.values(),
             *self.desktops.values(),
             *self.connectors.values(),
             *self.providers.values(),
@@ -222,7 +264,7 @@ class PluginRegistry:
     def tag_tier(self, tag: Tag) -> str:
         """Most restrictive tier among the tag's plugins."""
         manifests = [
-            self.get("agent", tag.agent),
+            self.get_layer(tag.agent),
             self.get("desktop", tag.desktop),
             self.get("connector", tag.connector),
         ]
@@ -235,14 +277,16 @@ class PluginRegistry:
 
         The default base (:data:`DEFAULT_BASE_IMAGE`) is always
         enumerated even before any ``base-image`` plugin is registered;
-        registered non-default bases extend the matrix.
+        registered non-default bases extend the matrix. The agent slot
+        is enumerated over both ``agent`` and ``ides`` plugins (see
+        :meth:`layer_slugs`).
         """
         out: list[Tag] = []
         bases = [DEFAULT_BASE_IMAGE] + [
             b for b in self.base_images if b != DEFAULT_BASE_IMAGE
         ]
         for b in bases:
-            for a in self.agents:
+            for a in self.layer_slugs():
                 for d in self.desktops:
                     for c in self.connectors:
                         tag = Tag(agent=a, desktop=d, connector=c, base_image=b)

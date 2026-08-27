@@ -1,7 +1,7 @@
 [plugin]
-slug = "codium"
-name = "vscodium"
-kind = "agent"
+slug = "vscode"
+name = "vscode"
+kind = "ides"
 api_version = "1"
 tier = "official"
 

@@ -17,6 +17,13 @@ FROM ${BASE_IMAGE}
 # `test -x` is the only build-time verification on purpose: running the Bun
 # binary (e.g. `opencode --version`) is unreliable under qemu cross-builds.
 #
+# The install is guarded by a PATH probe so the layer stays idempotent:
+# the IDE plugins (codium, vscode) deliberately do not bundle the CLI, so
+# this agent layer is the single place it lands. The guard is defensive —
+# if a future layer also installs opencode, the installer short-circuits
+# with "already installed" without recreating $HOME/.opencode, and the
+# probe skips that branch instead of breaking the composite chain.
+#
 # Auto-update is disabled image-wide: the binary lives in root-owned
 # /usr/local/bin, so self-update could never succeed for the sandbox user and
 # would only add startup noise. The ENV below only reaches supervisord
@@ -26,11 +33,13 @@ FROM ${BASE_IMAGE}
 # skills.paths entry on the mounted workspace into the home of the user
 # created at boot. Auth still lands in the user's own ~/.local/share/opencode.
 ENV OPENCODE_DISABLE_AUTOUPDATE=true
-RUN curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path && \
-    test -f /root/.opencode/bin/opencode && \
-    cp /root/.opencode/bin/opencode /usr/local/bin/opencode && \
-    chmod 755 /usr/local/bin/opencode && \
-    rm -rf /root/.opencode && \
+RUN if ! command -v opencode >/dev/null 2>&1; then \
+        curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path && \
+        test -f /root/.opencode/bin/opencode && \
+        cp /root/.opencode/bin/opencode /usr/local/bin/opencode && \
+        chmod 755 /usr/local/bin/opencode && \
+        rm -rf /root/.opencode; \
+    fi && \
     test -x /usr/local/bin/opencode
 
 COPY rootfs/ /

@@ -75,7 +75,7 @@ Create and start a sandbox container.
 | `--kasm-port <port>` | `8444` | Host port for KasmVNC |
 | `--vnc-port <port>` | `5901` | Host port for VNC |
 | `--novnc-port <port>` | `6901` | Host port for noVNC |
-| `--password <pwd>` | `antigravity` | Password for SSH/VNC/KasmVNC |
+| `--password <pwd>` | `sanity` | Password for SSH/VNC/KasmVNC |
 | `--skip-check` | off | Skip Docker prerequisite checks |
 | `-w, --workspace <path>` | `./workspace` | Host directory to mount |
 | `-n, --name <name>` | `sanity-gravity` | Docker Compose project name |
@@ -223,6 +223,6 @@ The following environment variables are passed into the container at runtime:
 | `HOST_UID` | `1000` | UID for the container user |
 | `HOST_GID` | `1000` | GID for the container user's group |
 | `HOST_USER` | `developer` | Username created inside the container |
-| `HOST_PASSWORD` | `antigravity` | Password for SSH, VNC, and KasmVNC |
+| `HOST_PASSWORD` | `sanity` | Password for SSH, VNC, and KasmVNC |
 
 These are automatically derived from your host system by `sanity-cli up`.

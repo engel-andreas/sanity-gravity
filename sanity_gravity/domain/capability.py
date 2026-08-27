@@ -61,7 +61,7 @@ def solve(tag: Tag, registry: "PluginRegistry") -> Tag:
     ``KeyError`` from the registry so they're distinguishable from
     capability conflicts.
     """
-    a = registry.get("agent", tag.agent)
+    a = registry.get_layer(tag.agent)
     d = registry.get("desktop", tag.desktop)
     c = registry.get("connector", tag.connector)
 

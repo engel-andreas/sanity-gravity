@@ -44,8 +44,8 @@ def _add_up_args(p):
                    help="Host port for VNC (default: 5901)")
     p.add_argument("--novnc-port", default="6901",
                    help="Host port for noVNC (default: 6901)")
-    p.add_argument("--password", default="antigravity",
-                   help="Password for SSH/VNC (default: antigravity)")
+    p.add_argument("--password", default="sanity",
+                   help="Password for SSH/VNC (default: sanity)")
     p.add_argument("--skip-check", action="store_true",
                    help="Skip prerequisite checks")
     p.add_argument("--workspace", "-w", default=None,

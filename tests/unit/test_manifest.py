@@ -39,6 +39,8 @@ PLUGINS_DIR = _REPO_ROOT / "plugins"
         ("agents", "ag"),
         ("agents", "gc"),
         ("agents", "cc"),
+        ("ides", "codium"),
+        ("ides", "vscode"),
         ("desktops", "xfce"),
         ("desktops", "cinnamon"),
         ("desktops", "lxqt"),
@@ -57,7 +59,8 @@ def test_load_each_builtin_manifest(kind, slug):
     assert isinstance(m, PluginManifest)
     assert m.slug == slug
     # kind=singular in manifest, kind=plural in directory tree
-    assert m.kind == kind.rstrip("s")
+    # ("ides" keeps its plural form as the singular kind name)
+    assert m.kind == kind.rstrip("s") or m.kind == kind
     assert m.api_version == "1"
     assert m.dockerfile == "Dockerfile"
     assert m.dockerfile_path.is_file()

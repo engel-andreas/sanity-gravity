@@ -17,13 +17,14 @@ ubuntu:24.04 (pinned SHA) / debian:12 (pinned SHA)   ← base dimension (ubuntu 
      │   ├─ plugins/agents/cx/                        → _cx-xfce / _debian_cx-xfce
      │   ├─ plugins/agents/gc/                        → _gc-xfce / _debian_gc-xfce
      │   ├─ plugins/agents/oc/                        → _oc-xfce / _debian_oc-xfce
-     │   └─ plugins/agents/od/                        → _od-xfce / _debian_od-xfce
+     │   ├─ plugins/agents/od/                        → _od-xfce / _debian_od-xfce
+     │   └─ plugins/ides/{codium,vscode}/             → _codium-xfce / _vscode-xfce (+ debian) → codium-xfce-{kasm,vnc,ssh} / vscode-xfce-{kasm,vnc,ssh}
      ├─ plugins/desktops/cinnamon/                    → _base-cinnamon / _debian_base-cinnamon
-     │   └─ plugins/agents/*/                         → _*-cinnamon / _debian_*-cinnamon
+     │   └─ plugins/{agents,ides}/*/                  → _*-cinnamon / _debian_*-cinnamon
      ├─ plugins/desktops/lxqt/                        → _base-lxqt / _debian_base-lxqt
-     │   └─ plugins/agents/*/                         → _*-lxqt / _debian_*-lxqt
+     │   └─ plugins/{agents,ides}/*/                  → _*-lxqt / _debian_*-lxqt
      ├─ plugins/desktops/openbox/                     → _base-openbox / _debian_base-openbox
-     │   └─ plugins/agents/*/                         → _*-openbox / _debian_*-openbox
+     │   └─ plugins/{agents,ides}/*/                  → _*-openbox / _debian_*-openbox
      └─ plugins/desktops/none/                        → _base-none / _debian_base-none
          ├─ plugins/agents/agy/                       → _agy-none / _debian_agy-none → agy-none-ssh / debian-agy-none-ssh
          ├─ plugins/agents/cc/                        → _cc-none / _debian_cc-none
@@ -32,7 +33,7 @@ ubuntu:24.04 (pinned SHA) / debian:12 (pinned SHA)   ← base dimension (ubuntu 
          └─ plugins/agents/oc/                        → _oc-none / _debian_oc-none
 ```
 
-(`ag` and `od` require a GUI desktop, so they have no headless `none` variant.)
+(`ag`, `od` and the `ides` plugins require a GUI desktop, so they have no headless `none` variant.)
 
 The base image is itself a manifest-driven plugin: `plugins/base-images/ubuntu/`
 owns the canonical base `Dockerfile` (the default OS layer; it builds with
@@ -41,8 +42,11 @@ owns the canonical base `Dockerfile` (the default OS layer; it builds with
 `Dockerfile` built on pinned `debian:12`. Each non-base layer lives under
 `plugins/<kind>/<slug>/` alongside a `manifest.toml` declaring its
 capabilities, ports, compose overlay, and (for connectors) announce
-template. The kernel reads manifests at startup via
-`lib/plugins.PluginRegistry`; adding a new agent/desktop/connector/base is
+template. `ides` plugins (IDE apps such as VSCodium / VS Code) fill the
+**same slot as agents** — same build layer, same position in the
+dimension tag — but live under `plugins/ides/` with `kind = "ides"`.
+The kernel reads manifests at startup via
+`lib/plugins.PluginRegistry`; adding a new agent/ides/desktop/connector/base is
 **a directory + two files** — no Python edits required (see PR #6).
 
 ## Naming Convention

@@ -199,9 +199,13 @@ def resolve_ephemeral(ctx) -> None:
         return "?"
 
     reg = default_registry()
+    try:
+        agent_manifest = reg.get_layer(ctx.tag.agent)
+    except KeyError:
+        agent_manifest = None
     manifests = (
         reg.connectors.get(ctx.tag.connector),
-        reg.agents.get(ctx.tag.agent),
+        agent_manifest,
         reg.desktops.get(ctx.tag.desktop),
     )
     seen: set[str] = set()
@@ -367,7 +371,10 @@ def announce(ctx) -> None:
 
     reg = default_registry()
     connector_m = reg.get("connector", connector_slug)
-    agent_m = reg.agents.get(ctx.tag.agent)
+    try:
+        agent_m = reg.get_layer(ctx.tag.agent)
+    except KeyError:
+        agent_m = None
     desktop_m = reg.desktops.get(ctx.tag.desktop)
 
     provider_manifests = []

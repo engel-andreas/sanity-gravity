@@ -4,15 +4,17 @@ Each plugin under ``plugins/<kind>/<slug>/`` ships a ``manifest.toml``
 describing the plugin's identity, capabilities, build artifact, and any
 optional ports / compose overlay / environment / announce template.
 
-The schema is **symmetric across kinds**: agent, desktop, and connector
-manifests may all declare any of the optional sections below. Historically
-only connectors did, but plugins of any kind sometimes need extra env
-vars (e.g. an agent that wants ``OPENAI_API_KEY``), extra ports, or a
-custom announce blurb. Generators / hooks merge contributions from all
-three plugins of a tag (agent + desktop + connector) — see
+The schema is **symmetric across kinds**: agent, ides, desktop, and
+connector manifests may all declare any of the optional sections below.
+Historically only connectors did, but plugins of any kind sometimes need
+extra env vars (e.g. an agent that wants ``OPENAI_API_KEY``), extra
+ports, or a custom announce blurb. ``ides`` plugins (VSCodium, VS Code)
+fill the same tag slot and build layer as agents. Generators / hooks
+merge contributions from all plugins of a tag (agent-position +
+desktop + connector, plus providers) — see
 ``_compose_gen.generate_compose_for_tag`` and ``up_hooks.announce`` for
 the merge semantics (last-write-wins on collisions; connector first,
-then agent, then desktop).
+then agent-position, then desktop).
 
 Schema (TOML)::
 
@@ -89,7 +91,7 @@ __all__ = [
 ]
 
 
-_VALID_KINDS = {"base-image", "agent", "desktop", "connector", "provider"}
+_VALID_KINDS = {"base-image", "agent", "ides", "desktop", "connector", "provider"}
 
 # Support tiers, ordered least to most restrictive. A tag's tier is the
 # most restrictive tier among its three plugins. Only ``official``
@@ -414,9 +416,9 @@ def load_manifest(path: str | Path) -> PluginManifest:
     )
 
     # Optional sections — the schema is symmetric: any kind (agent /
-    # desktop / connector) may declare ports, compose overlay,
+    # ides / desktop / connector) may declare ports, compose overlay,
     # environment, or an announce template. Generators merge
-    # contributions across all three plugins of a tag.
+    # contributions across a tag's plugins.
     ports = _parse_ports(data.get("ports"), f"{p}:[ports]")
     compose = _parse_compose(data.get("compose"), f"{p}:[compose]")
     environment = _parse_environment(data.get("environment"), f"{p}:[environment]")

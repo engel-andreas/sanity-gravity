@@ -19,6 +19,7 @@ from sanity_gravity.cli.registry import (
     CONNECTORS,
     DEFAULT_TAG,
     DESKTOPS,
+    IDES,
     OFFICIAL_TAGS,
     PROVIDERS,
     VALID_TAGS,
@@ -132,6 +133,19 @@ def list_variants(args):
             f"{info['name']}{gui_tag}{marker}"
         )
 
+    if IDES:
+        print_plain(f"\n  {Colors.BOLD}IDEs:{Colors.ENDC}")
+        for slug, info in IDES.items():
+            gui_tag = (
+                f" {Colors.WARNING}(requires GUI){Colors.ENDC}"
+                if info["requires_gui"] else ""
+            )
+            marker = _tier_marker(info.get("tier", "official"))
+            print_plain(
+                f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = "
+                f"{info['name']}{gui_tag}{marker}"
+            )
+
     print_plain(f"\n  {Colors.BOLD}Connectors:{Colors.ENDC}")
     for slug, info in CONNECTORS.items():
         gui_tag = (
@@ -170,6 +184,11 @@ def list_variants(args):
         f"(e.g. {DEFAULT_TAG}); other bases are prefixed "
         "(e.g. debian-ag-xfce-kasm)."
     )
+    if IDES:
+        print_plain(
+            "    IDEs (vscodium, vscode) fill the same 'agent' slot: "
+            "e.g. codium-xfce-vnc"
+        )
     print_plain(f"  {Colors.BOLD}Default:{Colors.ENDC} {DEFAULT_TAG}")
 
     print_plain(f"\n  {Colors.BOLD}All valid tags:{Colors.ENDC}")
@@ -220,6 +239,7 @@ def plugins_list(args):
     sections = (
         ("Base Images", reg.base_images),
         ("Agents", reg.agents),
+        ("IDEs", reg.ides),
         ("Desktops", reg.desktops),
         ("Connectors", reg.connectors),
         ("Providers", reg.providers),
@@ -239,6 +259,7 @@ def plugins_list(args):
     total = (
         len(reg.base_images)
         + len(reg.agents)
+        + len(reg.ides)
         + len(reg.desktops)
         + len(reg.connectors)
         + len(reg.providers)

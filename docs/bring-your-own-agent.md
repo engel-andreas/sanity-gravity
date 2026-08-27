@@ -15,6 +15,12 @@ images for community agents, so build those locally.) This guide uses the
 real `oc` (OpenCode) agent as the running example - copy it, rename the slug,
 swap the install command.
 
+> **IDE plugins** (VSCodium, VS Code) follow the exact same layout, but
+> under `plugins/ides/<slug>/` with `kind = "ides"`. They occupy the same
+> build layer and the same slot in the dimension tag as agents (an IDE is
+> built on top of the desktop, before the connector), so everything in this
+> guide applies unchanged.
+
 ## 1. The manifest
 
 `plugins/agents/oc/manifest.toml`:

@@ -54,10 +54,24 @@ def generate_compose_for_tag(tag):
     _, agent, desktop, connector = parse_tag(tag)
     reg = get_registry()
     connector_m = reg.connectors[connector]
-    agent_m = reg.agents.get(agent)
+    try:
+        agent_m = reg.get_layer(agent)
+    except KeyError:
+        agent_m = None
     desktop_m = reg.desktops.get(desktop)
 
     return _build_tag_compose(tag, reg, connector_m, [agent_m], desktop_m)
+
+
+def _resolve_layer_manifests(reg, agent_slugs: list[str]) -> list:
+    """Resolve agent-position slugs (agents **or** IDEs) to manifests."""
+    manifests = []
+    for a in agent_slugs:
+        try:
+            manifests.append(reg.get_layer(a))
+        except KeyError:
+            continue
+    return manifests
 
 
 def _generate_compose_composite(tag):
@@ -71,7 +85,7 @@ def _generate_compose_composite(tag):
 
     connector_m = reg.connectors.get(connector_slug)
     desktop_m = reg.desktops.get(desktop_slug)
-    agent_ms = [reg.agents.get(a) for a in agent_slugs if a in reg.agents]
+    agent_ms = _resolve_layer_manifests(reg, agent_slugs)
 
     return _build_tag_compose(tag, reg, connector_m, agent_ms, desktop_m)
 
@@ -93,7 +107,7 @@ def _build_tag_compose(tag, reg, connector_m, agent_ms, desktop_m):
         "HOST_UID": "${HOST_UID:-1000}",
         "HOST_GID": "${HOST_GID:-1000}",
         "HOST_USER": "${HOST_USER:-developer}",
-        "HOST_PASSWORD": "${HOST_PASSWORD:-antigravity}",
+        "HOST_PASSWORD": "${HOST_PASSWORD:-sanity}",
     }
     # Merge order: connector, then agents (last agent wins), then desktop.
     # Last-write-wins on collisions.

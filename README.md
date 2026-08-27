@@ -64,7 +64,7 @@ cd sanity-gravity
 Open **https://localhost:8444** — your sandboxed desktop is ready!
 
 * **Username**: your host OS username
-* **Password**: `mysecret` (default: `antigravity`)
+* **Password**: `mysecret` (default: `sanity`)
 
 > The self-signed certificate warning on localhost is expected. Click through it.
 
@@ -121,7 +121,7 @@ Missing your favorite agent? Adding one takes a manifest plus a Dockerfile - see
 
 ```bash
 ./sanity-cli up -v <tag>        # Start a sandbox
-  --password <pwd>              #   SSH/VNC password (default: antigravity)
+  --password <pwd>              #   SSH/VNC password (default: sanity)
   --workspace <path>            #   Host directory to mount (default: ./workspace)
   --name <name>                 #   Project name for multi-instance (default: sanity-gravity)
   --cpus <n> --memory <n>       #   Resource limits (e.g. --cpus 2 --memory 4G)
