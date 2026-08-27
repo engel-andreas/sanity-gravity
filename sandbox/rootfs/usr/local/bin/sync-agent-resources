@@ -84,11 +84,16 @@ parse_config() {
             local key="${BASH_REMATCH[1]}"
             local value="${BASH_REMATCH[2]}"
             
-            # Remove quotes from value
-            value="${value%\"}"
-            value="${value#\"}"
-            value="${value%\'}"
-            value="${value#\'}"
+            # Remove surrounding quotes and TOML array brackets ("[\"a\", \"b\"]")
+            # so array-valued keys (on_boot, on_demand, workspace.sources, ...)
+            # are stored clean and split reliably by the readers in main() and
+            # discover_resources().
+            value="${value#\"}"; value="${value%\"}"
+            value="${value#\'}"; value="${value%\'}"
+            value="${value#\[}"; value="${value%\]}"
+            value="${value//\"/}"
+            value="${value//\'/}"
+            value=$(echo "$value" | xargs)
             
             # Store in associative array
             CONFIG["${current_section}.${key}"]="$value"
