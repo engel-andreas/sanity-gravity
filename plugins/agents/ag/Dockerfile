@@ -50,6 +50,9 @@ RUN mkdir -p /etc/apt/keyrings && \
     apt-get autoremove -y && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# The entrypoint hook in rootfs/ mirrors workspace skills into Antigravity
+# IDE's global skill directory (~/.gemini/config/skills/) via symlinks,
+# so skills scattered across the workspace are visible in any open project.
 COPY rootfs/ /
 
 RUN dpkg-divert --add --rename --divert /usr/share/antigravity/antigravity-bin /usr/share/antigravity/antigravity && \

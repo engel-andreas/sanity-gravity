@@ -63,6 +63,8 @@ class ComposeService:
     ports: list[str] = field(default_factory=list)
     network_mode: str | None = None
     shm_size: str | None = None
+    mem_limit: str | None = None
+    cpus: str | None = None
     restart: str | None = None
     stop_grace_period: str | None = None
     cap_drop: list[str] | None = None
@@ -70,6 +72,7 @@ class ComposeService:
     pids_limit: int | None = None
     ulimits: dict[str, dict[str, int]] = field(default_factory=dict)
     labels: dict[str, str] = field(default_factory=dict)
+    extra_hosts: list[str] = field(default_factory=list)
     deploy: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -95,6 +98,10 @@ class ComposeService:
             out["network_mode"] = self.network_mode
         if self.shm_size:
             out["shm_size"] = self.shm_size
+        if self.mem_limit:
+            out["mem_limit"] = self.mem_limit
+        if self.cpus:
+            out["cpus"] = str(self.cpus)
         if self.restart:
             out["restart"] = self.restart
         if self.stop_grace_period:
@@ -109,6 +116,8 @@ class ComposeService:
             out["ulimits"] = {k: dict(v) for k, v in self.ulimits.items()}
         if self.labels:
             out["labels"] = dict(self.labels)
+        if self.extra_hosts:
+            out["extra_hosts"] = list(self.extra_hosts)
         if self.deploy:
             out["deploy"] = _deepcopy_dict(self.deploy)
         return out
@@ -196,31 +205,33 @@ class ComposeBuilder:
         svc.labels.update(labels)
         return self
 
-    def set_deploy_resources(
+    def merge_extra_hosts(self, name: str, hosts: list[str]) -> "ComposeBuilder":
+        """Append extra_hosts to the service, skipping exact duplicates."""
+        svc = self.services[name]
+        for h in hosts:
+            if h not in svc.extra_hosts:
+                svc.extra_hosts.append(h)
+        return self
+
+    def set_resource_limits(
         self,
         name: str,
         *,
         cpus: str | None = None,
         memory: str | None = None,
     ) -> "ComposeBuilder":
-        """Set ``deploy.resources.limits`` on the service.
+        """Set ``mem_limit`` / ``cpus`` on the service.
 
-        Quotes values via ``str()``; YAML emits ``cpus: '1.5'`` so the
-        compose parser sees a string (matching docker-compose conventions).
+        Uses service-level keys (not ``deploy.resources.limits``) to avoid
+        conflicts with ``pids_limit`` and ``ulimits`` in standalone mode.
         """
         if cpus is None and memory is None:
             return self
         svc = self.services[name]
-        deploy = dict(svc.deploy) if svc.deploy else {}
-        resources = dict(deploy.get("resources") or {})
-        limits = dict(resources.get("limits") or {})
         if cpus is not None:
-            limits["cpus"] = str(cpus)
+            svc.cpus = str(cpus)
         if memory is not None:
-            limits["memory"] = str(memory)
-        resources["limits"] = limits
-        deploy["resources"] = resources
-        svc.deploy = deploy
+            svc.mem_limit = str(memory)
         return self
 
     # -- rendering ---------------------------------------------------

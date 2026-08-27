@@ -57,34 +57,36 @@ __all__ = ["PluginRegistry", "default_registry", "reset_default_registry"]
 _LOADED_HOOK_MODULES: set[str] = set()
 
 
-_VALID_KINDS: tuple[str, ...] = ("base-image", "agent", "desktop", "connector")
+_VALID_KINDS: tuple[str, ...] = ("base-image", "agent", "desktop", "connector", "provider")
 _KIND_TO_PLURAL: dict[str, str] = {
     "base-image": "base-images",
     "agent": "agents",
     "desktop": "desktops",
     "connector": "connectors",
+    "provider": "providers",
 }
 
 
 class PluginRegistry:
-    """Four-keyed index of parsed plugin manifests.
+    """Five-keyed index of parsed plugin manifests.
 
     Attributes
     ----------
-    base_images / agents / desktops / connectors:
+    base_images / agents / desktops / connectors / providers:
         ``dict[slug -> PluginManifest]`` for that kind.
     root:
         Root of the plugin tree (e.g. ``plugins/``). Useful for callers
         that need to resolve relative manifest paths.
     """
 
-    __slots__ = ("base_images", "agents", "desktops", "connectors", "root", "_loaded_hook_modules")
+    __slots__ = ("base_images", "agents", "desktops", "connectors", "providers", "root", "_loaded_hook_modules")
 
     def __init__(self, root: Path | None = None) -> None:
         self.base_images: dict[str, PluginManifest] = {}
         self.agents: dict[str, PluginManifest] = {}
         self.desktops: dict[str, PluginManifest] = {}
         self.connectors: dict[str, PluginManifest] = {}
+        self.providers: dict[str, PluginManifest] = {}
         self.root = root
         # Synthetic dotted names of every hooks.py module this registry
         # has imported. ``reset_default_registry`` clears these from
@@ -187,6 +189,8 @@ class PluginRegistry:
             return self.desktops
         if kind == "connector":
             return self.connectors
+        if kind == "provider":
+            return self.providers
         raise KeyError(f"unknown plugin kind: {kind!r}")
 
     def get(self, kind: str, slug: str) -> PluginManifest:
@@ -204,12 +208,13 @@ class PluginRegistry:
         return list(self._bucket(kind).keys())
 
     def all_manifests(self) -> list[PluginManifest]:
-        """Flat list of every registered manifest (base-images → agents → desktops → connectors)."""
+        """Flat list of every registered manifest (base-images → agents → desktops → connectors → providers)."""
         return [
             *self.base_images.values(),
             *self.agents.values(),
             *self.desktops.values(),
             *self.connectors.values(),
+            *self.providers.values(),
         ]
 
     # -- tag enumeration --------------------------------------------

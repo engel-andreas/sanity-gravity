@@ -231,6 +231,7 @@ def test_full_up_flow_dry_run_makes_no_subprocess_calls():
         generate_compose_for_tag=lambda t: ("config/foo.yml", t),
         generate_git_compose=lambda u, s: None,
         generate_resource_compose=lambda c, m, s: None,
+        generate_provider_compose=lambda p, s: None,
         sync_config=lambda *a, **kw: None,
         is_port_in_use=lambda p: False,
         run_command=lambda *a, **kw: None,  # would-be Docker calls go via Action

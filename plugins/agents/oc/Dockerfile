@@ -22,9 +22,9 @@ FROM ${BASE_IMAGE}
 # would only add startup noise. The ENV below only reaches supervisord
 # children (the GUI path); SSH logins get a fresh PAM environment, so the
 # entrypoint hook in rootfs/ additionally seeds the documented config-file
-# switch (~/.config/opencode/opencode.json with "autoupdate": false) into the
-# home of the user created at boot. Auth still lands in the user's own
-# ~/.local/share/opencode.
+# switch (~/.config/opencode/opencode.json with "autoupdate": false) plus a
+# skills.paths entry on the mounted workspace into the home of the user
+# created at boot. Auth still lands in the user's own ~/.local/share/opencode.
 ENV OPENCODE_DISABLE_AUTOUPDATE=true
 RUN curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path && \
     test -f /root/.opencode/bin/opencode && \

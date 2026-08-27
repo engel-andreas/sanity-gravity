@@ -29,4 +29,7 @@ RUN arch="$(dpkg --print-architecture)" && \
     chmod -R a+rX /opt/codex && \
     test -x /usr/local/bin/codex
 
+# The entrypoint hook in rootfs/ mirrors workspace skills into the CLI's
+# global skill directory (~/.agents/skills/) via symlinks. This path is
+# also an interoperability alias read by Gemini CLI (gc).
 COPY rootfs/ /

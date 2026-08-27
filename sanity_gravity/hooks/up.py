@@ -28,7 +28,7 @@ def validate_inputs(ctx) -> None:
 
 def gen_main_compose(ctx) -> None:
     """UP_COMPOSE/100: primary tag-derived compose file."""
-    path, _ = ctx.deps.generate_compose_for_tag(str(ctx.tag))
+    path, _ = ctx.deps.generate_compose_for_tag(ctx.service_name)
     ctx.compose_files.append(Path(path))
 
 
@@ -52,6 +52,19 @@ def gen_resource_compose(ctx) -> None:
         ctx.reporter.info("Resource Limits Applied")
 
 
+def gen_provider_compose(ctx) -> None:
+    """UP_COMPOSE/150: optional provider overlay (extra_hosts + env)."""
+    providers = getattr(ctx, "providers", [])
+    if not providers:
+        return
+    out = ctx.deps.generate_provider_compose(providers, ctx.service_name)
+    if out:
+        ctx.compose_files.append(Path(out))
+        ctx.reporter.info(
+            f"Provider overlay applied: {', '.join(providers)}"
+        )
+
+
 def _port_specs_by_slug() -> dict[str, PortSpec]:
     """Union of every plugin-declared port spec, keyed by runtime slug.
 
@@ -60,9 +73,16 @@ def _port_specs_by_slug() -> dict[str, PortSpec]:
     announce hook reads back. First declaration wins on duplicates; the
     only duplicated slug today is ``ssh``, declared identically by every
     connector.
+
+    Provider manifests are excluded: provider ports are host-side
+    metadata (displayed in ``plugins list``) and must not enter
+    ``auto_port_alloc`` or ``resolved_ports``, otherwise
+    ``host.docker.internal`` URLs break.
     """
     out: dict[str, PortSpec] = {}
     for manifest in default_registry().all_manifests():
+        if manifest.kind == "provider":
+            continue
         for spec in manifest.ports:
             out.setdefault(spec.legacy_slug or spec.label, spec)
     return out
@@ -350,7 +370,12 @@ def announce(ctx) -> None:
     agent_m = reg.agents.get(ctx.tag.agent)
     desktop_m = reg.desktops.get(ctx.tag.desktop)
 
-    ports_map = _ports_for_announce(ctx, connector_m, agent_m, desktop_m)
+    provider_manifests = []
+    for slug in getattr(ctx, "providers", []):
+        if slug in reg.providers:
+            provider_manifests.append(reg.providers[slug])
+
+    ports_map = _ports_for_announce(ctx, connector_m, agent_m, desktop_m, *provider_manifests)
     base_fmt_kwargs = dict(
         user=user,
         password=ctx.password,
@@ -364,7 +389,7 @@ def announce(ctx) -> None:
     )
 
     merged: dict[str, str] = {}
-    for manifest in (connector_m, agent_m, desktop_m):
+    for manifest in (connector_m, agent_m, desktop_m, *provider_manifests):
         if manifest is None or manifest.announce is None:
             continue
         # Per-manifest ``_PortsView`` carries the plugin slug so the
@@ -399,6 +424,7 @@ def register_builtin_up_hooks(bus: EventBus) -> None:
 
     bus.subscribe(Phase.UP_VALIDATE, validate_inputs, priority=100)
     bus.subscribe(Phase.UP_COMPOSE, gen_main_compose, priority=100)
+    bus.subscribe(Phase.UP_COMPOSE, gen_provider_compose, priority=150)
     bus.subscribe(Phase.UP_COMPOSE, gen_git_compose, priority=200)
     bus.subscribe(Phase.UP_COMPOSE, gen_resource_compose, priority=300)
     bus.subscribe(Phase.UP_PORT_ALLOC, auto_port_alloc, priority=100)

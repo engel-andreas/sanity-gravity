@@ -23,7 +23,8 @@ from sanity_gravity.cli.io import (
     validate_project_name,
     validate_username,
 )
-from sanity_gravity.cli.registry import deprecation_warning, parse_tag
+from sanity_gravity.cli.registry import deprecation_warning, is_composite_tag, parse_tag
+from sanity_gravity.core.build_metadata import read_build_metadata, resolve_build_name
 from sanity_gravity.core.orchestrator import (
     Deps,
     PortRequest,
@@ -40,6 +41,7 @@ from sanity_gravity.effects.executor import build_default_executor
 from sanity_gravity.compose.generators import (
     generate_compose_for_tag,
     generate_git_compose,
+    generate_provider_compose,
     generate_resource_compose,
 )
 from sanity_gravity.verbs.check import check_prereqs
@@ -67,11 +69,60 @@ def up(args):
     """Start the specified tag, routed through the microkernel."""
     target = args.variant
 
-    try:
+    # If no --variant given, try using --name as a build name
+    if target is None:
+        build_name = args.name
+        if build_name == "sanity-gravity":
+            print_error(
+                "No --variant specified. Use --variant <tag> or "
+                "--name <build-name> to start a sandbox."
+            )
+            sys.exit(1)
+        resolved_tag = resolve_build_name(build_name)
+        if resolved_tag is None:
+            print_error(
+                f"No build found for name '{build_name}'. "
+                "Use --variant <tag> or --name <build-name>."
+            )
+            sys.exit(1)
+        args.name = build_name  # Use build name as project name
+        target = resolved_tag
+
+    # Resolve build names: if --variant is not a valid tag or composite
+    # tag, check if it's a user-assigned build name from metadata.
+    resolved_tag = None
+    if not is_composite_tag(target):
+        try:
+            Tag.parse(target, parser=parse_tag)
+        except ValueError:
+            # Not a valid legacy tag — try resolving as build name
+            resolved_tag = resolve_build_name(target)
+            if resolved_tag is None:
+                print_error(
+                    f"Unknown variant '{target}'. Not a valid tag or build name."
+                )
+                sys.exit(1)
+            # Use the build name as default project name if not overridden
+            if args.name == "sanity-gravity":
+                args.name = target
+            target = resolved_tag
+
+    if is_composite_tag(target):
+        # Composite tags are opaque identifiers from the build step.
+        from sanity_gravity.cli.registry import parse_composite_tag
+        parts = parse_composite_tag(target)
+        tag = Tag(
+            agent=parts["agents"][0] if parts["agents"] else "unknown",
+            desktop=parts["desktop"][0] if parts["desktop"] else "unknown",
+            connector=parts["connector"][0] if parts["connector"] else "unknown",
+            base_image=parts["base_image"][0] if parts["base_image"] else "ubuntu",
+        )
+        # Read build metadata for providers
+        metadata = read_build_metadata(target)
+        providers = metadata.get("providers", []) if metadata else []
+    else:
         tag = Tag.parse(target, parser=parse_tag)
-    except ValueError as e:
-        print_error(str(e))
-        sys.exit(1)
+        providers = []
 
     # Deprecated tags warn but never block (tier policy) - existing
     # sandboxes keep working, only CI/publish dropped the tag.
@@ -141,6 +192,7 @@ def up(args):
         generate_compose_for_tag=generate_compose_for_tag,
         generate_git_compose=generate_git_compose,
         generate_resource_compose=generate_resource_compose,
+        generate_provider_compose=generate_provider_compose,
         sync_config=sync_config,
         is_port_in_use=is_port_in_use,
         run_command=run_command,
@@ -160,6 +212,8 @@ def up(args):
         deps=deps,
         reporter=getattr(args, "reporter", None) or reporter,
         dry_run=bool(getattr(args, "dry_run", False)),
+        providers=providers,
+        full_tag=target,
     )
     if args.cpus:
         ctx.env["_REQ_CPUS"] = args.cpus

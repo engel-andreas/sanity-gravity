@@ -3,7 +3,12 @@ ARG BASE_IMAGE=ubuntu:24.04
 FROM ${BASE_IMAGE}
 
 # Claude Code Agent Layer
-# Installs Anthropic Claude Code CLI via official installer
+# Installs Anthropic Claude Code CLI via official installer.
+#
+# The entrypoint hook in rootfs/ mirrors skills found anywhere under the
+# mounted workspace into ~/.claude/skills (symlink per skill folder), since
+# Claude Code discovers global skills only from that fixed location and has
+# no configurable search roots like opencode's skills.paths.
 
 # Install Claude Code (official method) and symlink to global path
 RUN curl -fsSL https://claude.ai/install.sh | bash && \

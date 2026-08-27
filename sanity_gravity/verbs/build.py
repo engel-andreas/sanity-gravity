@@ -17,14 +17,20 @@ from sanity_gravity.cli.io import (
     get_reporter,
     print_error,
     print_header,
+    print_info,
     print_warning,
 )
 from sanity_gravity.cli.registry import (
     DEFAULT_TAG,
     OFFICIAL_TAGS,
+    construct_tag,
     deprecation_warning,
+    is_composite_tag,
+    parse_composite_tag,
     parse_tag,
 )
+from sanity_gravity.core.build_metadata import write_build_metadata
+from sanity_gravity.domain.tags import DEFAULT_BASE_IMAGE
 from sanity_gravity.core.eventbus import EventBus
 from sanity_gravity.core.orchestrator import (
     BuildContext,
@@ -76,7 +82,24 @@ def build(args):
 
     layer = getattr(args, "layer", None)
     layer_target = getattr(args, "layer_target", None)
-    targets = list(args.variant) if getattr(args, "variant", None) else [DEFAULT_TAG]
+
+    # Check if explicit flags are used (--base, --agents, --desktop, --connector)
+    # Also check legacy --base-image flag
+    has_explicit_flags = any([
+        getattr(args, "base", None),
+        getattr(args, "base_image", None),
+        getattr(args, "agents", None),
+        getattr(args, "desktop", None),
+        getattr(args, "connector", None),
+        getattr(args, "provider", None),
+    ])
+
+    if has_explicit_flags:
+        targets, providers = _resolve_explicit_flags(args)
+    else:
+        # Legacy --variant path (deprecated when used with non-default values)
+        targets = list(args.variant) if args.variant and args.variant != ["all"] else ["all"]
+        providers = _parse_provider_arg(getattr(args, "provider", None))
 
     if layer:
         print_header(
@@ -88,6 +111,9 @@ def build(args):
     else:
         # Validate eagerly so a bad tag aborts before we set up the kernel.
         for target in targets:
+            if is_composite_tag(target):
+                # Composite tags from explicit flags are already validated
+                continue
             try:
                 parse_tag(target)
             except ValueError as e:
@@ -124,6 +150,73 @@ def build(args):
             orch.run(_BUILD_PHASES, ctx)
     except ActionFailedError as e:
         sys.exit(e.result.exit_code or 1)
+
+
+def _parse_provider_arg(provider_arg: str | None) -> list[str]:
+    """Parse comma-separated provider slugs."""
+    if not provider_arg:
+        return []
+    return [p.strip() for p in provider_arg.split(",") if p.strip()]
+
+
+def _resolve_explicit_flags(args):
+    """Resolve explicit dimension flags into targets and providers.
+
+    Returns ``(targets, providers)`` where targets is a list of tag
+    strings and providers is a list of provider slugs.
+    """
+    # Support both --base (new) and --base-image (legacy)
+    base_image = getattr(args, "base", None) or getattr(args, "base_image", None) or None
+    agents_arg = getattr(args, "agents", None)
+    desktop = getattr(args, "desktop", None)
+    connector = getattr(args, "connector", None)
+    providers = _parse_provider_arg(getattr(args, "provider", None))
+    build_name = getattr(args, "name", None)
+
+    # When no flags are given, default to all (legacy behavior)
+    if not any([agents_arg, desktop, connector]):
+        return ["all"], providers
+
+    # Parse agents from comma-separated list
+    agents = []
+    if agents_arg:
+        agents = [a.strip() for a in agents_arg.split(",") if a.strip()]
+    if not agents:
+        print_error("--agents is required when using explicit flags")
+        sys.exit(1)
+    if not desktop:
+        print_error("--desktop is required when using explicit flags")
+        sys.exit(1)
+    if not connector:
+        print_error("--connector is required when using explicit flags")
+        sys.exit(1)
+
+    # Construct a single composite tag
+    try:
+        tag = construct_tag(
+            base_image=base_image,
+            agents=agents,
+            desktop=desktop,
+            connector=connector,
+            providers=providers,
+        )
+    except ValueError as e:
+        print_error(str(e))
+        sys.exit(1)
+
+    # Write build metadata for composite tags
+    if not getattr(args, "dry_run", False):
+        write_build_metadata(
+            tag,
+            base_image=base_image or DEFAULT_BASE_IMAGE,
+            agents=agents,
+            desktop=desktop,
+            connector=connector,
+            providers=providers,
+            name=build_name,
+        )
+
+    return [tag], providers
 
 
 def explain_build(args):

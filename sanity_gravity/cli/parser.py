@@ -32,8 +32,9 @@ from sanity_gravity.verbs.upgrade import upgrade
 def _add_up_args(p):
     """Shared up/run/explain-up arguments."""
     p.add_argument(
-        "--variant", "-v", required=True,
-        help=f"Tag to run (e.g. {DEFAULT_TAG})",
+        "--variant", "-v", required=False, default=None,
+        help=f"Tag to run (e.g. {DEFAULT_TAG}). Optional if --name "
+             "matches a build name.",
     )
     p.add_argument("--ssh-port", "-p", default="2222",
                    help="Host port for SSH (default: 2222)")
@@ -93,8 +94,9 @@ def build_parser():
     p_build = subparsers.add_parser("build", help="Build sandbox images")
     p_build.add_argument(
         "variant", nargs="*",
-        help="Tag to build, e.g. ag-xfce-kasm (default: all)",
-        default=["all"],
+        help="[deprecated] Tag to build, e.g. ag-xfce-kasm (default: all). "
+             "Use --base, --agents, --desktop, --connector, --provider instead.",
+        default=None,
     )
     p_build.add_argument("--no-cache", action="store_true",
                          help="Do not use cache when building image")
@@ -111,6 +113,42 @@ def build_parser():
                          help="List intermediate image names and exit")
     p_build.add_argument("--json", dest="json_output", action="store_true",
                          help="Output in JSON format (for --list-intermediates)")
+
+    # Explicit dimension flags (replaces --variant)
+    p_build.add_argument(
+        "--base",
+        default=None,
+        help="Base image slug (default: ubuntu). Comma-separated for multiple.",
+    )
+    p_build.add_argument(
+        "--agents", "-a",
+        default=None,
+        help="Agent slug(s), comma-separated (e.g. ag,cc). "
+             "Multiple agents are chained in the build layer stack.",
+    )
+    p_build.add_argument(
+        "--desktop", "-d",
+        default=None,
+        help="Desktop slug (e.g. xfce).",
+    )
+    p_build.add_argument(
+        "--connector", "-c",
+        default=None,
+        help="Connector slug (e.g. kasm).",
+    )
+    p_build.add_argument(
+        "--provider",
+        default=None,
+        help="Provider slug(s), comma-separated (e.g. ollama,lm-studio). "
+             "Providers are host-side services; their env is recorded in "
+             "build metadata for the compose overlay.",
+    )
+    p_build.add_argument(
+        "--name", "-n",
+        default=None,
+        help="Custom name for this build. Other commands (up, list, etc.) "
+             "recognize this name as an alias for the generated tag.",
+    )
     p_build.set_defaults(func=build)
 
     # up

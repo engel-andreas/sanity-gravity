@@ -125,26 +125,26 @@ def test_builder_declare_volume_idempotent():
     assert list(builder.volumes) == ["v"]
 
 
-def test_builder_set_deploy_resources_quotes_numeric_strings():
+def test_builder_set_resource_limits_quotes_numeric_strings():
     """cpus='1.5' must become a quoted YAML string, not a float."""
     builder = ComposeBuilder().add_service(ComposeService(name="svc", image="alpine"))
-    builder.set_deploy_resources("svc", cpus="1.5", memory="2g")
+    builder.set_resource_limits("svc", cpus="1.5", memory="2g")
     text = builder.render()
     # cpus is numeric-looking -> PyYAML auto-quotes it
     assert "cpus: '1.5'" in text
     # memory is a docker size string ('2g') -> safe to emit bare
-    assert "memory: 2g" in text
+    assert "mem_limit: 2g" in text
     # Round-trip still gives string values
     parsed = yaml.safe_load(text)
-    limits = parsed["services"]["svc"]["deploy"]["resources"]["limits"]
-    assert limits["cpus"] == "1.5"
-    assert limits["memory"] == "2g"
+    assert parsed["services"]["svc"]["cpus"] == "1.5"
+    assert parsed["services"]["svc"]["mem_limit"] == "2g"
 
 
-def test_builder_set_deploy_resources_noop_when_both_none():
+def test_builder_set_resource_limits_noop_when_both_none():
     builder = ComposeBuilder().add_service(ComposeService(name="svc", image="alpine"))
-    builder.set_deploy_resources("svc", cpus=None, memory=None)
-    assert builder.services["svc"].deploy is None
+    builder.set_resource_limits("svc", cpus=None, memory=None)
+    assert builder.services["svc"].mem_limit is None
+    assert builder.services["svc"].cpus is None
 
 
 # -- ${VAR:-default} preservation ----------------------------------------

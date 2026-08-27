@@ -153,3 +153,63 @@ pattern:
   the binary is installed and runnable *by the non-root user*. The module
   auto-skips when the image has not been built locally, so the suite stays
   green on machines that never built your agent.
+
+## 6. Skill-Synchronisation
+
+All major agent CLIs support the open [Agent Skills](https://agentskills.io)
+standard (`SKILL.md` files in defined directories). Since skills in the
+mounted workspace may live in subdirectories the agent cannot discover on its
+own, sanity-gravity bridges them at container startup.
+
+### How it works
+
+A shared utility at `/usr/local/bin/sync-skills` (installed in the base
+rootfs) scans the workspace for `SKILL.md` files and symlinks each skill's
+parent directory into the agent's global skill directory. An entrypoint hook
+in each agent's `rootfs/etc/entrypoint.d/` calls this script at every boot.
+
+### Per-agent overview
+
+| Agent | Hook | Global skill path | Mechanism |
+| :---- | :--- | :---------------- | :-------- |
+| `oc` / `od` | `10-oc-config.sh` / `10-od-config.sh` | `skills.paths` in `~/.config/opencode/opencode.json` | Config-based (recursive scan) |
+| `cc` (Claude Code) | `10-cc-skills.sh` | `~/.claude/skills/` | Symlink mirror |
+| `cx` (Codex CLI) | `10-cx-skills.sh` | `~/.agents/skills/` | Symlink mirror |
+| `gc` (Gemini CLI) | `10-gc-skills.sh` | `~/.gemini/skills/` | Symlink mirror |
+| `ag` (Antigravity IDE) | `10-ag-skills.sh` | `~/.gemini/config/skills/` | Symlink mirror |
+| `agy` (Antigravity CLI) | `10-agy-skills.sh` | `~/.gemini/antigravity-cli/skills/` | Symlink mirror |
+
+**Note:** `~/.agents/skills/` is an interoperability alias read by both
+Codex CLI and Gemini CLI. Syncing to this path covers both agents.
+
+### Manual refresh
+
+Skills added to the workspace *after* the container has started are not
+picked up until the next restart. To sync without restarting:
+
+```bash
+# Refresh Claude Code skills
+sync-skills --target ~/.claude/skills
+
+# Refresh Codex CLI + Gemini CLI (shared alias)
+sync-skills --target ~/.agents/skills
+
+# Refresh Antigravity IDE
+sync-skills --target ~/.gemini/config/skills
+
+# Refresh Antigravity CLI
+sync-skills --target ~/.gemini/antigravity-cli/skills
+
+# Custom workspace path
+sync-skills --target ~/.claude/skills --workspace /path/to/workspace
+```
+
+### Design notes
+
+- **Sync, not seed-once** - hooks rerun on every boot so added skills appear
+  and removed ones disappear.
+- **Symlink safety** - only symlinks created by a previous run are updated or
+  pruned. Real files and directories already in the target are never touched.
+- **Name collisions** - first alphabetical hit wins; duplicates are logged.
+- **`.git` excluded** - the scan prunes `.git` directories to avoid false
+  positives and reduce filesystem traversal.

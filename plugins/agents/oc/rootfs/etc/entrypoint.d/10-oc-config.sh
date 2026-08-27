@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# OpenCode: Additional agent-specific setup
+# Skills synchronization is handled by the central sync-agent-resources script.
+# This hook only handles agent-specific tasks that don't fit the central framework.
+#
 # Persist the OpenCode autoupdate opt-out where SSH sessions can see it.
 # The Dockerfile's ENV OPENCODE_DISABLE_AUTOUPDATE only reaches
 # supervisord children (the GUI path); sshd builds a fresh PAM
@@ -7,14 +11,15 @@
 # The documented config-file switch covers every entry path instead.
 # Seed-once: the file belongs to the user and may be edited later
 # (providers, theme, ...), so an existing config is left untouched.
+
 CONFIG_DIR="/home/$USER_NAME/.config/opencode"
 CONFIG_FILE="$CONFIG_DIR/opencode.json"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Seeding OpenCode user config (autoupdate disabled)..."
     mkdir -p "$CONFIG_DIR"
-    cat > "$CONFIG_FILE" <<'EOF'
+    cat > "$CONFIG_FILE" <<EOF
 {
-  "$schema": "https://opencode.ai/config.json",
+  "\$schema": "https://opencode.ai/config.json",
   "autoupdate": false
 }
 EOF

@@ -20,10 +20,12 @@ from sanity_gravity.cli.registry import (
     DEFAULT_TAG,
     DESKTOPS,
     OFFICIAL_TAGS,
+    PROVIDERS,
     VALID_TAGS,
     get_registry,
     tag_tier,
 )
+from sanity_gravity.core.build_metadata import list_built_entries, list_built_tags
 from sanity_gravity.domain.tags import DEFAULT_BASE_IMAGE
 from sanity_gravity.verbs.lifecycle import (
     get_active_projects,
@@ -150,6 +152,15 @@ def list_variants(args):
         )
         print_plain(f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {info['name']}{gui_tag}")
 
+    if PROVIDERS:
+        print_plain(f"\n  {Colors.BOLD}Providers:{Colors.ENDC}")
+        for slug, info in PROVIDERS.items():
+            marker = _tier_marker(info.get("tier", "official"))
+            print_plain(
+                f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = "
+                f"{info['name']}{marker}"
+            )
+
     print_plain(
         f"\n  {Colors.BOLD}Tag format:{Colors.ENDC} "
         "{base-image-}agent-desktop-connector"
@@ -162,6 +173,23 @@ def list_variants(args):
     print_plain(f"  {Colors.BOLD}Default:{Colors.ENDC} {DEFAULT_TAG}")
 
     print_plain(f"\n  {Colors.BOLD}All valid tags:{Colors.ENDC}")
+    built_tags = list_built_tags()
+    if built_tags:
+        print_plain(f"\n    {Colors.BOLD}Built variants (from explicit flags):{Colors.ENDC}")
+        built_entries = list_built_entries()
+        for entry in built_entries:
+            tag = entry.get("tag", "?")
+            name = entry.get("name")
+            marker = (
+                f" {Colors.OKGREEN}(default){Colors.ENDC}"
+                if tag == DEFAULT_TAG else ""
+            )
+            marker += _tier_marker(tag_tier(tag)) if tag in VALID_TAGS else ""
+            name_tag = f" {Colors.WARNING}[{name}]{Colors.ENDC}" if name else ""
+            print_plain(
+                f"    {Colors.OKCYAN}{tag}{Colors.ENDC}{marker}{name_tag}"
+            )
+    print_plain(f"\n    {Colors.BOLD}Combinatorial tags:{Colors.ENDC}")
     for tag in VALID_TAGS:
         marker = (
             f" {Colors.OKGREEN}(default){Colors.ENDC}"
@@ -194,6 +222,7 @@ def plugins_list(args):
         ("Agents", reg.agents),
         ("Desktops", reg.desktops),
         ("Connectors", reg.connectors),
+        ("Providers", reg.providers),
     )
     for label, bucket in sections:
         print_plain(f"\n  {Colors.BOLD}{label}:{Colors.ENDC}")
@@ -212,5 +241,6 @@ def plugins_list(args):
         + len(reg.agents)
         + len(reg.desktops)
         + len(reg.connectors)
+        + len(reg.providers)
     )
     print_success(f"{total} plugins registered")

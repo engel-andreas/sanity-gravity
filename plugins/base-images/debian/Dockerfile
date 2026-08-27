@@ -40,7 +40,7 @@ RUN locale-gen en_US.UTF-8 && \
         ! -name 'en_US*' ! -name 'locale.alias' ! -name 'C*' -exec rm -rf {} +
 
 # Setup SSH Config
-RUN mkdir /var/run/sshd && \
+RUN mkdir -p /var/run/sshd && \
     echo 'PermitRootLogin no' >> /etc/ssh/sshd_config && \
     echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
 

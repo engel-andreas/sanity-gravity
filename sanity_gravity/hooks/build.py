@@ -27,6 +27,8 @@ import sys
 from sanity_gravity.cli.registry import (
     OFFICIAL_TAGS,
     get_registry,
+    is_composite_tag,
+    parse_composite_tag,
     parse_tag,
 )
 from sanity_gravity.core.command import CommandBuilder
@@ -93,6 +95,14 @@ def _desktop_layer_name(base_image: str, desktop: str) -> str:
     return f"_{base_image}_base-{desktop}"
 
 
+def _provider_layer_name(base_image: str, providers: list[str]) -> str:
+    """Intermediate name for a chain of providers: ``_base-ollama_lmstudio``."""
+    provider_part = "_".join(providers)
+    if base_image == DEFAULT_BASE_IMAGE:
+        return f"_base-{provider_part}"
+    return f"_{base_image}_base-{provider_part}"
+
+
 def _agent_layer_name(base_image: str, agent: str, desktop: str) -> str:
     if base_image == DEFAULT_BASE_IMAGE:
         return f"_{agent}-{desktop}"
@@ -111,7 +121,12 @@ def _get_unique_intermediate_parts() -> list[tuple[str, str, str]]:
 
 
 def _resolve_build_chain(tag: str) -> list[tuple[str, str, str | None]]:
-    """Build chain for a final tag as ``[(dockerfile, image_name, parent)]``."""
+    """Build chain for a final tag as ``[(dockerfile, image_name, parent)]``.
+
+    Automatically dispatches to composite chain for multi-agent tags.
+    """
+    if is_composite_tag(tag):
+        return _resolve_composite_build_chain(tag)
     base_image, agent, desktop, connector = parse_tag(tag)
     return [
         (_base_dockerfile(base_image), _base_layer_name(base_image), None),
@@ -124,6 +139,67 @@ def _resolve_build_chain(tag: str) -> list[tuple[str, str, str | None]]:
         (_plugin_dockerfile("connector", connector),
          tag, _agent_layer_name(base_image, agent, desktop)),
     ]
+
+
+def _resolve_composite_build_chain(tag: str) -> list[tuple[str, str, str | None]]:
+    """Build chain for composite (multi-agent / provider) tags.
+
+    For a tag like ``ag_cc-xfce-kasm-ollama`` with agents=[ag,cc],
+    desktop=xfce, connector=kasm, the chain is::
+
+        base → desktop → agent-ag → agent-cc → connector
+
+    Each agent layer builds on the previous. The final image name is the
+    full tag (``ag_cc-xfce-kasm-ollama``).
+
+    Providers are inserted after the base layer but before the desktop,
+    since they are system-level services that don't depend on the
+    desktop environment.
+    """
+    parts = parse_composite_tag(tag)
+    base_image = parts["base_image"][0] if parts["base_image"] else "ubuntu"
+    agents = parts["agents"]
+    desktop = parts["desktop"][0]
+    connector = parts["connector"][0]
+    providers = parts.get("providers", [])
+
+    chain: list[tuple[str, str, str | None]] = []
+    chain.append((_base_dockerfile(base_image), _base_layer_name(base_image), None))
+
+    # Insert provider layers after base, before desktop
+    parent = _base_layer_name(base_image)
+    for i, provider in enumerate(providers):
+        layer_name = _provider_layer_name(base_image, providers[:i + 1])
+        chain.append((_plugin_dockerfile("provider", provider),
+                       layer_name,
+                       parent))
+        parent = layer_name
+
+    chain.append((_plugin_dockerfile("desktop", desktop),
+                  _desktop_layer_name(base_image, desktop),
+                  parent))
+
+    parent = _desktop_layer_name(base_image, desktop)
+    for i, agent in enumerate(agents):
+        layer_name = _composite_agent_layer_name(base_image, agents[:i + 1], desktop)
+        chain.append((_plugin_dockerfile("agent", agent),
+                       layer_name,
+                       parent))
+        parent = layer_name
+
+    chain.append((_plugin_dockerfile("connector", connector),
+                   tag, parent))
+    return chain
+
+
+def _composite_agent_layer_name(
+    base_image: str, agents: list[str], desktop: str
+) -> str:
+    """Intermediate name for a chain of agents: ``_ag_cc-xfce``."""
+    agent_part = "_".join(agents)
+    if base_image == "ubuntu":
+        return f"_{agent_part}-{desktop}"
+    return f"_{base_image}_{agent_part}-{desktop}"
 
 
 def _parse_intermediate(target: str) -> tuple[str, str, str | None] | None:
@@ -240,17 +316,30 @@ def build_plan(ctx) -> None:
         return
 
     for target in targets:
-        try:
-            parse_tag(target)
-        except ValueError as e:
-            ctx.reporter.error(str(e))
-            sys.exit(1)
-        if base_override:
-            _, _, _, connector = parse_tag(target)
+        if is_composite_tag(target):
+            # Composite tags from explicit flags are already validated
+            pass
+        else:
+            try:
+                parse_tag(target)
+            except ValueError as e:
+                ctx.reporter.error(str(e))
+                sys.exit(1)
+        if base_override and not is_composite_tag(target):
+            # Legacy --base-image shortcut: build only connector on top
+            # of the specified base. Only for non-composite tags.
+            if is_composite_tag(target):
+                parts = parse_composite_tag(target)
+                connector = parts["connector"][0]
+            else:
+                _, _, _, connector = parse_tag(target)
             dockerfile = _plugin_dockerfile("connector", connector)
             ctx.plan.append((dockerfile, target, None))  # parent=None → use override
             continue
-        chain = _resolve_build_chain(target)
+        if is_composite_tag(target):
+            chain = _resolve_composite_build_chain(target)
+        else:
+            chain = _resolve_build_chain(target)
         for dockerfile, image_name, parent in chain:
             full_tag = _image_tag(image_name)
             # Skip cached intermediates only; final tag always rebuilds.

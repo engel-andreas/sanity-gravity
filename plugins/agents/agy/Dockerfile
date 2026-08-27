@@ -7,4 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     rm -rf /usr/share/doc/* /usr/share/info/* /usr/share/lintian/* /usr/share/man/* \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# The entrypoint hook in rootfs/ mirrors workspace skills into the CLI's
+# global skill directory (~/.gemini/antigravity-cli/skills/) via symlinks.
 COPY rootfs/ /

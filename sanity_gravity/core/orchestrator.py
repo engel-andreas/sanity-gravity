@@ -49,6 +49,7 @@ class Deps:
     generate_compose_for_tag: Callable[[str], tuple[str, str]]
     generate_git_compose: Callable[[str, str], str | None]
     generate_resource_compose: Callable[[str | None, str | None, str], str | None]
+    generate_provider_compose: Callable[[list[str], str | None], str | None]
     sync_config: Callable[[str, str, str], None]
     is_port_in_use: Callable[[int], bool]
     run_command: Callable[..., Any]
@@ -73,8 +74,10 @@ class UpContext:
     compose_files: list[Path] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     extra_compose_overlays: list[Any] = field(default_factory=list)
+    providers: list[str] = field(default_factory=list)
     actions: list[Action] = field(default_factory=list)
     dry_run: bool = False
+    full_tag: str | None = None  # complete tag string including providers
 
     def drain_actions(self) -> list[Action]:
         """Pop and return the queued actions, leaving the list empty.
@@ -88,7 +91,7 @@ class UpContext:
 
     @property
     def service_name(self) -> str:
-        return str(self.tag)
+        return self.full_tag or str(self.tag)
 
     @property
     def container_name(self) -> str:

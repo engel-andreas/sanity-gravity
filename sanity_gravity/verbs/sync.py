@@ -7,10 +7,10 @@ re-exported for that call site.
 from __future__ import annotations
 
 import os
-import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 from sanity_gravity.cli.colors import Colors
@@ -84,6 +84,17 @@ def sync_config(project_name, container_name, username, config_source="config"):
     if os.path.exists(config_dir):
         print_info(f"Syncing ./config/ to container ({container_name})...")
 
+        state = run_command(
+            ("docker", "inspect", "-f", "{{.State.Running}}", container_name),
+            capture=True, check=False,
+        )
+        if state != "true":
+            print_warning(
+                f"Container '{container_name}' is not running (state={state}). "
+                "Skipping configuration sync."
+            )
+            return
+
         user_ready = False
         for _ in range(30):
             out = run_command(
@@ -108,16 +119,23 @@ def sync_config(project_name, container_name, username, config_source="config"):
         )
 
         print_info("Transferring files (excluding runtime state)...")
-        # Genuine shell requirement: this is a pipe between two processes.
-        # All interpolated values are quoted with shlex.quote as defence-in-depth.
-        tar_cmd = (
-            f"tar -cf - -C {shlex.quote(config_dir)} "
-            f"--exclude='antigravity/daemon' "
-            f"--exclude='antigravity-browser-profile' . "
-            f"| docker exec -i {shlex.quote(container_name)} "
-            f"tar -xf - -C {shlex.quote(target_dir)}"
-        )
-        run_command(tar_cmd, shell=True)
+        excludes = {"antigravity/daemon", "antigravity-browser-profile"}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for entry in os.listdir(config_dir):
+                src = os.path.join(config_dir, entry)
+                dst = os.path.join(tmp, entry)
+                if entry in excludes:
+                    continue
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+
+            run_command([
+                "docker", "cp", f"{tmp}/.",
+                f"{container_name}:{target_dir}/",
+            ])
 
         out = run_command(
             ("docker", "exec", container_name, "chown", "-R",

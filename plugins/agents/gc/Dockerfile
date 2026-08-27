@@ -18,4 +18,7 @@ RUN npm install -g @google/gemini-cli && \
     npm pack picomatch@4.0.4 && tar xzf picomatch-4.0.4.tgz --strip-components=1 && rm picomatch-4.0.4.tgz && \
     npm cache clean --force
 
+# The entrypoint hook in rootfs/ mirrors workspace skills into Gemini CLI's
+# global skill directory (~/.gemini/skills/) via symlinks.
+# Note: Gemini CLI is transitioning to Antigravity CLI (agy) as of June 2026.
 COPY rootfs/ /

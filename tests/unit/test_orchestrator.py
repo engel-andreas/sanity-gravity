@@ -79,6 +79,7 @@ def _make_deps(**overrides):
         ),
         generate_git_compose=_rec("generate_git_compose", None),
         generate_resource_compose=_rec("generate_resource_compose", None),
+        generate_provider_compose=_rec("generate_provider_compose", None),
         sync_config=_rec("sync_config"),
         is_port_in_use=_rec("is_port_in_use", False),
         run_command=_rec("run_command"),
