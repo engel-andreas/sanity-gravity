@@ -166,14 +166,29 @@ discover_resources() {
 # ──────────────────────────────────────────────────────────────
 # Symlink Method
 # ──────────────────────────────────────────────────────────────
+# Argument 3 (link_name) is the display name of the link. When argument 4
+# (resource_file) is set, the source is treated as a resource *directory*
+# containing that file (e.g. AGENT.md), and instead of symlinking the whole
+# directory we symlink <target_dir>/<basename><link_ext> -> <source>/<file>.
+# This lets file-per-entry formats (like opencode agents <name>.md) map a
+# directory-based workspace resource onto the per-file layout a consumer wants.
 sync_symlink() {
     local source="$1"
     local target_dir="$2"
     local link_name="${3:-$(basename "$source")}"
-    local target="$target_dir/$link_name"
+    local resource_file="${4:-}"
+    local link_ext="${5:-}"
+    
+    local source_point="$source"
+    local target
+    if [[ -n "$resource_file" ]]; then
+        source_point="$source/$resource_file"
+        link_name="${link_name}${link_ext}"
+    fi
+    target="$target_dir/$link_name"
     
     if $DRY_RUN; then
-        echo "[dry-run] Would link: $target -> $source"
+        echo "[dry-run] Would link: $target -> $source_point"
         return 0
     fi
     
@@ -186,13 +201,13 @@ sync_symlink() {
     fi
     
     # Check if symlink already points to correct location
-    if [[ -L "$target" ]] && [[ "$(readlink "$target")" == "$source" ]]; then
+    if [[ -L "$target" ]] && [[ "$(readlink "$target")" == "$source_point" ]]; then
         $VERBOSE && echo "  Already linked: $link_name"
         return 0
     fi
     
     # Create or update symlink
-    ln -sfn "$source" "$target"
+    ln -sfn "$source_point" "$target"
     echo "  Linked: $link_name"
 }
 
@@ -328,7 +343,10 @@ cleanup_stale_links() {
         fi
     done
     
-    [[ $pruned -gt 0 ]] && echo "  Pruned $pruned stale links"
+    if [[ $pruned -gt 0 ]]; then
+        echo "  Pruned $pruned stale links"
+    fi
+    return 0
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -408,8 +426,20 @@ main() {
                     local target_dir="${CONFIG["${prefix}.${resource_type}.target_dir"]}"
                     target_dir=$(expand_vars "$target_dir")
                     
+                    # Optional: link a file inside each resource directory as
+                    # <type-dir>/<basename><link_ext>. Used for formats that need
+                    # one file per entry (e.g. opencode agents <name>.md).
+                    local resource_file="${CONFIG["${prefix}.${resource_type}.file"]:-}"
+                    local link_ext="${CONFIG["${prefix}.${resource_type}.link_ext"]:-}"
+                    
                     for resource in "${resources[@]}"; do
-                        sync_symlink "$resource" "$target_dir"
+                        if [[ -n "$resource_file" ]]; then
+                            # Skip resource dirs that lack the expected file
+                            [[ -f "$resource/$resource_file" ]] || continue
+                            sync_symlink "$resource" "$target_dir" "$(basename "$resource")" "$resource_file" "$link_ext"
+                        else
+                            sync_symlink "$resource" "$target_dir"
+                        fi
                     done
                     
                     # Cleanup stale links

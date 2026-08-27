@@ -43,8 +43,8 @@ root = "/home/${USER_NAME}/workspace"
 
 # Subdirectories to scan for each resource type
 [workspace.sources]
-skills = ["skills", "skills-*"]
-agents = ["agents"]
+skills = ["skills", "skills-*", "ai-resources", "claude-skills"]
+agents = ["agents", "ai-resources", "claude-skills"]
 mcp = ["mcp", ".mcp"]
 commands = ["commands"]
 references = ["references", "docs"]
@@ -64,6 +64,14 @@ name = "opencode-cli"
 method = "config"
 config_file = "/home/${USER_NAME}/.config/opencode/opencode.json"
 config_key = "skills.paths"
+
+[agents.oc.agents]
+method = "symlink"
+target_dir = "/home/${USER_NAME}/.config/opencode/agents"
+# opencode expects one <name>.md file per agent; map each workspace agent
+# directory containing AGENT.md onto <name>.md in the target dir.
+file = "AGENT.md"
+link_ext = ".md"
 
 # --- OpenCode Desktop (od) ---
 [agents.od]
