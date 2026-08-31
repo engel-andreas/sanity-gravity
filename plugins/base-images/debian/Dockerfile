@@ -25,7 +25,18 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     tzdata \
     ca-certificates \
     openssh-server \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-deu \
     && apt-get autoremove -y && \
+    rm -rf /usr/share/doc/* /usr/share/info/* /usr/share/lintian/* /usr/share/man/* \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 24 LTS via NodeSource (matches plugins/agents/gc pattern)
+# Needed as the container runtime for Node-based MCP servers (e.g. ZVG portal).
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    apt-get autoremove -y && \
     rm -rf /usr/share/doc/* /usr/share/info/* /usr/share/lintian/* /usr/share/man/* \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
