@@ -43,8 +43,8 @@ root = "/home/${USER_NAME}/workspace"
 
 # Subdirectories to scan for each resource type
 [workspace.sources]
-skills = ["skills", "skills-*", "ai-resources", "claude-skills"]
-agents = ["agents", "ai-resources", "claude-skills"]
+skills = ["skills", "skills-*", "ai-resources", "claude-skills", "personal-ai-resources"]
+agents = ["agents", "ai-resources", "claude-skills", "personal-ai-resources"]
 mcp = ["mcp", ".mcp"]
 commands = ["commands"]
 references = ["references", "docs"]

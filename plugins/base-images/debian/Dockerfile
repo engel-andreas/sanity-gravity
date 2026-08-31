@@ -1,11 +1,11 @@
-# Pinned: debian:12-slim (bookworm 12.15) as of 2026-08-05
+# Pinned: debian:13-slim (trixie 13.6) as of 2026-08-31
 # Slim drops man pages, docs, and the apt package lists for a ~40MB
 # smaller base image; findutils/coreutils/etc. (priority "important")
 # are still present, so entrypoint/cleanup scripts keep working.
 # Multi-arch manifest list digest so amd64/arm64 builds resolve the
 # correct platform image. Default is unused unless building directly;
 # the CLI always passes --build-arg BASE_IMAGE=<parent>.
-ARG BASE_IMAGE=debian:12-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+ARG BASE_IMAGE=debian:13-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive

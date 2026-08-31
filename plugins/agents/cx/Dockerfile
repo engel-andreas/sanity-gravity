@@ -15,7 +15,7 @@ FROM ${BASE_IMAGE}
 # bundled helpers like rg relative to its own path) with a symlink onto the
 # global PATH, mirroring the official installer's layout. Runtime config and
 # auth still land in the user's own ~/.codex.
-ARG CODEX_VERSION=0.143.0
+ARG CODEX_VERSION=0.151.0
 RUN arch="$(dpkg --print-architecture)" && \
     case "$arch" in \
         amd64) target="x86_64-unknown-linux-musl"; slug="linux-x64" ;; \
