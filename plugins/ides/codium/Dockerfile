@@ -18,8 +18,9 @@ COPY extensions/ /tmp/codium-ext/
 # libsecret-1-0, libasound2, ...) resolve from the base repos. The ALSA
 # lib is pulled explicitly (same rationale as the od plugin): Electron
 # hard-requires libasound.so.2 at launch, and the package name is
-# distro-specific - Ubuntu 24.04 (noble) renamed it to libasound2t64,
-# Debian 12 (bookworm) still ships libasound2.
+# distro-specific - Ubuntu 24.04 (noble) and Debian 13 (trixie) ship
+# libasound2t64, Debian 12 (bookworm) still ships libasound2. The build
+# probes the local package index to pick the right name.
 #
 # No agent CLI is bundled here: the IDE layer only provides the editor.
 # OpenCode (or any other agent) comes from its own agent layer composed
@@ -55,7 +56,7 @@ RUN arch="$(dpkg --print-architecture)" && \
         -o /tmp/codium.deb && \
     echo "${sha}  /tmp/codium.deb" | sha256sum -c - && \
     apt-get update && \
-    if grep -q "ID=debian" /etc/os-release; then ALSA_PKG="libasound2"; else ALSA_PKG="libasound2t64"; fi && \
+    if apt-cache show libasound2 >/dev/null 2>&1; then ALSA_PKG="libasound2"; else ALSA_PKG="libasound2t64"; fi && \
     apt-get install -y --no-install-recommends "${ALSA_PKG}" /tmp/codium.deb && \
     rm /tmp/codium.deb && \
     echo "d756bc25a8ac84dcb2e979137a1eacdfa79f76dd6d48d61c94e764825c7cc77d  /tmp/codium-ext/sst-dev.opencode-v2-0.1.1.vsix" | sha256sum -c - && \

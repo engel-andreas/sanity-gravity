@@ -12,8 +12,9 @@ FROM ${BASE_IMAGE}
 # libsecret-1-0, libasound2, ...) resolve from the base repos. The ALSA
 # lib is pulled explicitly (same rationale as the od / codium plugins):
 # Electron hard-requires libasound.so.2 at launch, and the package name
-# is distro-specific - Ubuntu 24.04 (noble) renamed it to
-# libasound2t64, Debian 12 (bookworm) still ships libasound2.
+# is distro-specific - Ubuntu 24.04 (noble) and Debian 13 (trixie) ship
+# libasound2t64, Debian 12 (bookworm) still ships libasound2. The build
+# probes the local package index to pick the right name.
 # The .deb is version-pinned; bump ARG VSCODE_VERSION / VSCODE_BUILD
 # and both SHA256 sums together (the build-suffix is per-arch and
 # differs from the version string).
@@ -40,7 +41,7 @@ RUN arch="$(dpkg --print-architecture)" && \
         -o /tmp/vscode.deb && \
     echo "${sha}  /tmp/vscode.deb" | sha256sum -c - && \
     apt-get update && \
-    if grep -q "ID=debian" /etc/os-release; then ALSA_PKG="libasound2"; else ALSA_PKG="libasound2t64"; fi && \
+    if apt-cache show libasound2 >/dev/null 2>&1; then ALSA_PKG="libasound2"; else ALSA_PKG="libasound2t64"; fi && \
     apt-get install -y --no-install-recommends "${ALSA_PKG}" /tmp/vscode.deb && \
     rm /tmp/vscode.deb && \
     for f in /usr/share/applications/code.desktop \

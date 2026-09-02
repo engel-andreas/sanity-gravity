@@ -15,8 +15,9 @@ FROM ${BASE_IMAGE}
 # but the opencode-desktop .deb does not declare it as a Depends, so
 # without this the app aborts with "error while loading shared libraries:
 # libasound.so.2". The package name is distro-specific: Ubuntu 24.04
-# (noble) renamed it to libasound2t64 (libasound2 is only a virtual
-# package there), while Debian 12 (bookworm) still ships libasound2. The
+# (noble) and Debian 13 (trixie) ship libasound2t64, while Debian 12
+# (bookworm) still ships libasound2. The build probes the local package
+# index to pick the right name. The
 # postinst is
 # container-safe: the chrome-sandbox SUID bit is only set when user
 # namespaces are unavailable, and the AppArmor profile install is skipped
@@ -49,7 +50,7 @@ RUN arch="$(dpkg --print-architecture)" && \
         -o /tmp/opencode.deb && \
     echo "${sha}  /tmp/opencode.deb" | sha256sum -c - && \
     apt-get update && \
-    if grep -q "ID=debian" /etc/os-release; then ALSA_PKG="libasound2"; else ALSA_PKG="libasound2t64"; fi && \
+    if apt-cache show libasound2 >/dev/null 2>&1; then ALSA_PKG="libasound2"; else ALSA_PKG="libasound2t64"; fi && \
     apt-get install -y --no-install-recommends "${ALSA_PKG}" /tmp/opencode.deb && \
     rm /tmp/opencode.deb && \
     apt-get autoremove -y && \
